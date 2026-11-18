@@ -151,17 +151,21 @@ window.__ModuleLoader__.load({
   overflow-wrap:anywhere}
 .ql-sub.is-truncate{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
-/* ── hero figure ──────────────────────────────────────────────────────── */
+/* ── wallet ───────────────────────────────────────────────────────────── */
+/* Supporting detail, not the headline: one quiet row. The plan windows above it
+   answer the question this panel exists for, and a large balance at 26px used to
+   push them down the page. */
 .ql-hero{
-  display:flex;flex-direction:column;gap:3px;padding:11px 13px;border-radius:11px;
+  display:flex;align-items:baseline;gap:8px;padding:9px 12px;border-radius:10px;
   border:.5px solid var(--dsw-alias-border-l2);
-  background:color-mix(in srgb, var(--dsw-alias-bg-layer-3) 86%, var(--dsw-alias-label-primary) 14%);
+  background:color-mix(in srgb, var(--dsw-alias-bg-layer-3) 92%, var(--dsw-alias-label-primary) 8%);
+  min-width:0;flex-wrap:wrap;
 }
-.ql-hero-label{color:var(--dsw-alias-label-tertiary);font-size:12px;letter-spacing:.01em}
-.ql-hero-value{font-size:26px;font-weight:650;line-height:1.1;letter-spacing:-.02em;
-  font-variant-numeric:tabular-nums}
-.ql-badge{display:inline-flex;align-items:center;gap:4px;align-self:flex-start;
-  margin-top:2px;padding:1px 7px;border-radius:999px;font-size:11px;letter-spacing:.01em;
+.ql-hero-label{color:var(--dsw-alias-label-tertiary);font-size:12px;letter-spacing:.01em;flex:none}
+.ql-hero-value{font-size:14px;font-weight:600;line-height:1.2;letter-spacing:-.01em;
+  font-variant-numeric:tabular-nums;flex:none}
+.ql-badge{display:inline-flex;align-items:center;gap:4px;
+  padding:1px 7px;border-radius:999px;font-size:11px;letter-spacing:.01em;
   border:.5px solid var(--dsw-alias-border-l3);color:var(--dsw-alias-label-secondary)}
 
 /* ── rows ─────────────────────────────────────────────────────────────── */
@@ -219,15 +223,9 @@ window.__ModuleLoader__.load({
 .ql-calls{display:flex;flex-direction:column;gap:2px}
 .ql-calls-cap{color:var(--dsw-alias-label-tertiary);font-size:12px;letter-spacing:.01em}
 
-/* Cache savings: a quiet line under the token total. It answers "is my plan
-   going far" more directly than the raw hit rate does. */
-.ql-cache{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
-.ql-cache-k{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:1}
-.ql-cache-v{color:var(--dsw-alias-state-business-primary);font-size:12px;line-height:1;
-  font-variant-numeric:tabular-nums;font-weight:600}
-
-/* Granted credit expires; say so before it does. */
-.ql-expiry{margin-top:3px;font-size:11px;line-height:1.4;
+/* Granted credit expires; say so before it does. Inline with the balance, since
+   the wallet row is one line now. */
+.ql-expiry{font-size:11px;line-height:1.4;flex-basis:100%;
   color:var(--dsw-alias-state-warn-label)}
 
 /* The two most recent calls: a quiet list, each row one line. */
@@ -668,19 +666,6 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * One quantity as a share of another, for a tooltip.
-     * @param {number} part
-     * @param {number} whole
-     * @returns {string} e.g. "99.8%", or "—" when the whole is unusable
-     */
-    function share(part, whole) {
-      const a = Number(part)
-      const b = Number(whole)
-      if (!Number.isFinite(a) || !Number.isFinite(b) || b <= 0) return '—'
-      return `${((a / b) * 100).toFixed(1)}%`
-    }
-
-    /**
      * Severity for a remaining percentage.
      *
      * Thresholds are deliberately wide (≤50% is already a warning): a quota that
@@ -1049,16 +1034,6 @@ window.__ModuleLoader__.load({
       const billing = reading?.billing ?? null
       const amount = reading?.money?.amount
       const expiry = expiryNotice(reading?.money?.expiresAt ?? null)
-      // Cache savings only appear when the records carried usable prices; a
-      // partial sample would understate them, so an incomplete total is dropped
-      // rather than shown small.
-      const cacheSaved = usage?.today?.cacheSavedComplete === true
-        && typeof usage.today.cacheSaved === 'number'
-        ? usage.today.cacheSaved
-        : null
-      const cacheTitle = cacheSaved === null
-        ? null
-        : `缓存读取 ${compactTokens(usage.today.cacheRead ?? 0)} tokens，占输入 ${share(usage.today.cacheRead, usage.today.input)}`
       const text = pillText(snapshot, mode)
       // The ring mirrors the text: it shows the cycle the pill names, so a
       // "仅 7d" pill never draws a 5-hour arc.
@@ -1107,6 +1082,14 @@ window.__ModuleLoader__.load({
             }, '控制台'),
           ]),
 
+          windows.length > 0
+            ? h('div', { key: 'wins', className: 'ql-wins' },
+              windows.map((entry, index) => h(WindowRow, { key: entry.key, entry, index })))
+            : h('span', { key: 'nowins', className: 'ql-sub' },
+              reading?.message ?? '这个账号当前没有套餐窗口。'),
+
+          // The wallet sits under the windows, not above them: the plan windows are
+          // what a subscriber watches, and a large balance pushed them off the top.
           typeof amount === 'number' ? h('div', { key: 'hero', className: 'ql-hero' }, [
             h('span', { key: 'l', className: 'ql-hero-label' }, '钱包余额'),
             h('span', { key: 'v', className: 'ql-hero-value' }, money(amount, reading.money.currency ?? 'USD')),
@@ -1121,12 +1104,6 @@ window.__ModuleLoader__.load({
               : h('span', { key: 'exp', className: 'ql-expiry' }, `赠送额度 ${expiry.text}`),
           ]) : null,
 
-          windows.length > 0
-            ? h('div', { key: 'wins', className: 'ql-wins' },
-              windows.map((entry, index) => h(WindowRow, { key: entry.key, entry, index })))
-            : h('span', { key: 'nowins', className: 'ql-sub' },
-              reading?.message ?? '这个账号当前没有套餐窗口。'),
-
           reading?.tier ? h(Row, { key: 'tier', label: '套餐', value: String(reading.tier).toUpperCase() }) : null,
 
           // Delivery note: the usage block is deliberately terse. A truncated
@@ -1138,15 +1115,6 @@ window.__ModuleLoader__.load({
               h('span', { key: 'k', className: 'ql-tok-k' }, '今日 token'),
               h('span', { key: 'v', className: 'ql-tok-v' }, compactTokens(usage.today.input + usage.today.output)),
             ]),
-            // Cached tokens bill at a fraction of the input rate, so the hit rate
-            // is what decides how far a plan goes. The number is a subtraction
-            // between two prices the vendor reports per record, not an estimate.
-            cacheSaved !== null && cacheSaved >= 0.01
-              ? h('div', { key: 'cache', className: 'ql-cache', title: cacheTitle }, [
-                h('span', { key: 'k', className: 'ql-cache-k' }, '缓存省下'),
-                h('span', { key: 'v', className: 'ql-cache-v' }, money(cacheSaved, 'USD')),
-              ])
-              : null,
             Array.isArray(usage.recent) && usage.recent.length > 0
               ? h('div', { key: 'calls', className: 'ql-calls' }, [
                 h('span', { key: 'cap', className: 'ql-calls-cap' }, '最近两次调用'),
