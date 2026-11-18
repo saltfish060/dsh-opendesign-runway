@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Quota Lens",
+    "description": "Read-only OpenDesign plan quota and wallet balance, with source and failure trail."
+  }
+}
