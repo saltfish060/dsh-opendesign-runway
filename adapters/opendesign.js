@@ -334,15 +334,42 @@ async function readCookie(cookie, timeoutMs, knownWorkspaceId = null) {
   const base = `${API}/api/v1/workspaces/${encodeURIComponent(workspaceId)}`
   const usage = await call({ url: `${base}/billing/coding-plan-usage`, headers, timeoutMs })
   trail.push(trailEntry({ channel: 'cookie', url: `${base}/billing/coding-plan-usage`, result: usage }))
+
+  // The wallet is a separate read from the plan. A Design Plan account still has
+  // money in it, and that money is what pays once the plan windows run dry — so
+  // when there are windows, the balance is exactly the number a reader will want
+  // next, and when there are none it is the only number there is.
+  //
+  // `coding-plan-usage` does not carry it, so this is its own request. A failure
+  // here is not a failure of the reading: the plan figures are still valid.
+  const wallet = await call({ url: `${base}/wallet/balance`, headers, timeoutMs })
+  trail.push(trailEntry({ channel: 'cookie', url: `${base}/wallet/balance`, result: wallet }))
+  const walletView = wallet.ok && wallet.body !== null && typeof wallet.body === 'object'
+    ? {
+      amount: num(wallet.body.balanceUsd),
+      expiresAt: typeof wallet.body.expiresAt === 'string' && wallet.body.expiresAt !== ''
+        ? wallet.body.expiresAt
+        : null,
+    }
+    : null
+
   if (usage.ok) {
     const plan = parseCodingPlan(usage.body !== null && typeof usage.body === 'object'
       ? (usage.body.codingPlan ?? usage.body)
       : {})
-    const amount = num(usage.body?.balanceUsd)
+    const amount = walletView?.amount ?? num(usage.body?.balanceUsd)
     return {
       trail,
       workspaceId,
-      reading: { amount, windows: plan.windows, tier: plan.tier, creditsPerUsd: null, periodEnd: null, endpoint: 'coding-plan-usage' },
+      reading: {
+        amount,
+        walletExpiresAt: walletView?.expiresAt ?? null,
+        windows: plan.windows,
+        tier: plan.tier,
+        creditsPerUsd: null,
+        periodEnd: null,
+        endpoint: 'coding-plan-usage',
+      },
     }
   }
 
@@ -357,7 +384,8 @@ async function readCookie(cookie, timeoutMs, knownWorkspaceId = null) {
     trail,
     workspaceId,
     reading: {
-      amount: num(body.balanceUsd),
+      amount: walletView?.amount ?? num(body.balanceUsd),
+      walletExpiresAt: walletView?.expiresAt ?? null,
       windows: plan.windows,
       tier: plan.tier,
       creditsPerUsd: null,
@@ -391,6 +419,8 @@ export function parseUsageRecord(entry) {
     ? entry.createdAt
     : typeof entry.consumedAt === 'string' && entry.consumedAt !== '' ? entry.consumedAt : null
   if (at === null) return null
+  const input = num(entry.inputTokens) ?? 0
+  const cacheRead = num(entry.cacheReadTokens) ?? 0
   return {
     at,
     model: typeof entry.model === 'string' && entry.model !== ''
@@ -399,10 +429,36 @@ export function parseUsageRecord(entry) {
     list: Math.abs(num(entry.listChargedUsd) ?? 0),
     wallet: Math.abs(num(entry.amountUsd) ?? 0),
     plan: Math.abs(num(entry.designPlanContribution?.amountUsd) ?? 0),
-    input: num(entry.inputTokens) ?? 0,
+    input,
     output: num(entry.outputTokens) ?? 0,
-    cacheRead: num(entry.cacheReadTokens) ?? 0,
+    cacheRead,
+    // What the cached tokens would have cost at the full input rate, minus what
+    // they did cost. Per-record unit prices are the vendor's own, so this needs
+    // no external price table. Null when the record carries no prices.
+    cacheSaved: cacheSavedFor(entry, cacheRead),
   }
+}
+
+/**
+ * The money served-from-cache tokens saved on one record.
+ *
+ * Cache reads bill at a small fraction of the input rate (0.006 vs 0.3 per
+ * million on this plan), so a high cache hit rate is the difference between a
+ * plan lasting hours and lasting minutes. The vendor reports both prices per
+ * record, which makes this a subtraction rather than an estimate.
+ * @param {object} entry one raw usage record
+ * @param {number} cacheRead tokens served from cache
+ * @returns {number | null} USD, or null when the record has no usable prices
+ */
+export function cacheSavedFor(entry, cacheRead) {
+  const prices = entry?.unitPrices
+  if (prices === null || typeof prices !== 'object') return null
+  const inputPrice = num(prices.input)
+  const cachePrice = num(prices.cacheRead)
+  if (inputPrice === null || cachePrice === null) return null
+  if (cacheRead <= 0) return 0
+  const saved = (cacheRead * (inputPrice - cachePrice)) / 1_000_000
+  return Number.isFinite(saved) && saved >= 0 ? saved : null
 }
 
 /**
@@ -416,7 +472,11 @@ export function parseUsageRecord(entry) {
 export function summarizeUsage(records) {
   const list = Array.isArray(records) ? records : []
   if (list.length === 0) return null
-  const today = { requests: 0, list: 0, wallet: 0, plan: 0, input: 0, output: 0, cacheRead: 0 }
+  const today = { requests: 0, list: 0, wallet: 0, plan: 0, input: 0, output: 0, cacheRead: 0, cacheSaved: 0 }
+  // A record without usable prices contributes nothing to the saved total, but
+  // one such record must not silently turn the total into a half-truth: it is
+  // counted so the summary can say how much of the sample it covers.
+  let pricedRecords = 0
   const byModel = new Map()
   for (const record of list) {
     today.requests += 1
@@ -426,6 +486,10 @@ export function summarizeUsage(records) {
     today.input += record.input
     today.output += record.output
     today.cacheRead += record.cacheRead
+    if (typeof record.cacheSaved === 'number') {
+      today.cacheSaved += record.cacheSaved
+      pricedRecords += 1
+    }
     const bucket = byModel.get(record.model) ?? { model: record.model, requests: 0, list: 0, input: 0, output: 0 }
     bucket.requests += 1
     bucket.list += record.list
@@ -437,7 +501,7 @@ export function summarizeUsage(records) {
     .map((row) => ({ ...row, listPerRequest: row.requests > 0 ? row.list / row.requests : 0 }))
     .sort((left, right) => right.list - left.list)
   return {
-    today,
+    today: { ...today, cacheSavedComplete: pricedRecords === list.length },
     byModel: rows,
     // The two most recent calls, in the order they happened. The panel names the
     // model and the moment; nothing else about a single call is worth a row.
@@ -649,7 +713,15 @@ export async function read(deps) {
     status: 'ok',
     identity,
     money: typeof chosen.amount === 'number'
-      ? { amount: chosen.amount, currency: 'USD', kind: chosen.windows.length > 0 ? 'plan' : 'wallet' }
+      ? {
+        amount: chosen.amount,
+        currency: 'USD',
+        // A plan account still holds wallet money. Labelling it "wallet" only
+        // when no windows exist hides the balance from exactly the reader who
+        // needs it: the one whose windows are nearly empty.
+        kind: chosen.windows.length > 0 ? 'plan' : 'wallet',
+        expiresAt: chosen.walletExpiresAt ?? null,
+      }
       : null,
     windows: chosen.windows,
     usage,

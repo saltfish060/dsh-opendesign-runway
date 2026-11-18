@@ -219,6 +219,17 @@ window.__ModuleLoader__.load({
 .ql-calls{display:flex;flex-direction:column;gap:2px}
 .ql-calls-cap{color:var(--dsw-alias-label-tertiary);font-size:12px;letter-spacing:.01em}
 
+/* Cache savings: a quiet line under the token total. It answers "is my plan
+   going far" more directly than the raw hit rate does. */
+.ql-cache{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
+.ql-cache-k{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:1}
+.ql-cache-v{color:var(--dsw-alias-state-business-primary);font-size:12px;line-height:1;
+  font-variant-numeric:tabular-nums;font-weight:600}
+
+/* Granted credit expires; say so before it does. */
+.ql-expiry{margin-top:3px;font-size:11px;line-height:1.4;
+  color:var(--dsw-alias-state-warn-label)}
+
 /* The two most recent calls: a quiet list, each row one line. */
 .ql-recent{display:flex;flex-direction:column;gap:1px}
 .ql-call{display:flex;align-items:center;gap:8px;min-width:0;min-height:20px;
@@ -395,6 +406,29 @@ window.__ModuleLoader__.load({
       const at = new Date(iso).getTime()
       if (!Number.isFinite(at)) return null
       return (at - Date.now()) / 3_600_000
+    }
+
+    /**
+     * A moment as how long ago it was.
+     *
+     * A clock time answers "when", but the question behind it is "was that just
+     * now, or hours ago" — and that question is answered without arithmetic by
+     * relative wording. The exact time stays available in the tooltip.
+     * @param {string} iso
+     * @returns {string | null}
+     */
+    function relativeTime(iso) {
+      if (typeof iso !== 'string' || iso === '') return null
+      const at = Date.parse(iso)
+      if (!Number.isFinite(at)) return null
+      const minutes = (Date.now() - at) / 60_000
+      // A record a few seconds in the future means clock skew, not prophecy.
+      if (minutes < 1) return '刚刚'
+      if (minutes < 60) return `${Math.round(minutes)} 分钟前`
+      const hours = minutes / 60
+      if (hours < 24) return `${Math.round(hours)} 小时前`
+      const days = Math.round(hours / 24)
+      return days <= 1 ? '昨天' : `${days} 天前`
     }
 
     /** One host route call, tolerating a non-JSON body. */
@@ -634,6 +668,19 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * One quantity as a share of another, for a tooltip.
+     * @param {number} part
+     * @param {number} whole
+     * @returns {string} e.g. "99.8%", or "—" when the whole is unusable
+     */
+    function share(part, whole) {
+      const a = Number(part)
+      const b = Number(whole)
+      if (!Number.isFinite(a) || !Number.isFinite(b) || b <= 0) return '—'
+      return `${((a / b) * 100).toFixed(1)}%`
+    }
+
+    /**
      * Severity for a remaining percentage.
      *
      * Thresholds are deliberately wide (≤50% is already a warning): a quota that
@@ -678,8 +725,7 @@ window.__ModuleLoader__.load({
     }
 
     /** A full sentence for the pill's accessible name. */
-    function pillAria(snapshot, mode) {
-      const reading = snapshot?.reading
+    function pillAria(snapshot, mode) {      const reading = snapshot?.reading
       if (!reading || reading.status !== 'ok') return `${PROVIDER_LABEL} 额度：${pillText(snapshot, mode)}`
       const text = pillText(snapshot, mode)
       if (text !== '') return `${PROVIDER_LABEL} 额度：${text}`
@@ -748,6 +794,31 @@ window.__ModuleLoader__.load({
       if (mode === 'none') return null
       if (mode === 'dot') return h(Dot, { tone })
       return h(Ring, { percent, tone })
+    }
+
+    /**
+     * How long a wallet balance has left before it expires, in whole days.
+     *
+     * Granted credit carries an expiry date; past it the money is simply gone.
+     * A date is easy to miss, so the panel only speaks up when it is close.
+     * @param {string | null} iso
+     * @returns {{ days: number, text: string } | null} null when the date is
+     *   missing, unparsable, past, or further away than the reminder window
+     */
+    function expiryNotice(iso) {
+      if (typeof iso !== 'string' || iso === '') return null
+      const at = Date.parse(iso)
+      if (!Number.isFinite(at)) return null
+      const hours = (at - Date.now()) / 3_600_000
+      if (!Number.isFinite(hours) || hours <= 0) return null
+      // Three days: long enough to act on, short enough not to be permanent noise.
+      if (hours > 72) return null
+      if (hours < 1) {
+        const minutes = Math.max(1, Math.round(hours * 60))
+        return { days: 0, text: `${minutes} 分钟后过期` }
+      }
+      const days = Math.ceil(hours / 24)
+      return { days, text: days <= 1 ? '不到 1 天后过期' : `${days} 天后过期` }
     }
 
     /** One labelled row. */
@@ -820,20 +891,28 @@ window.__ModuleLoader__.load({
     function WindowRow({ entry, index }) {
       const pct = typeof entry.remainingPct === 'number' ? entry.remainingPct : null
       const remainingHours = hoursUntil(entry.resetAt)
+      // "3 小时后重置" answers when, but not what the reader actually wants to
+      // know: whether waiting is worth it. The clock time goes in the tooltip.
       const resetText = remainingHours === null || remainingHours < 0
         ? null
-        : remainingHours < 1
-          ? '不到 1 小时后重置'
-          : hoursUntil(entry.resetAt) < 24
-            ? `${Math.round(remainingHours)} 小时后重置`
-            : `${Math.round(remainingHours / 24)} 天后重置`
+        : remainingHours < 1 / 60
+          ? '即将重置'
+          : remainingHours < 1
+            // Under an hour, "less than 1 hour" is not something anyone can act
+            // on; the minute count is.
+            ? `${Math.max(1, Math.round(remainingHours * 60))} 分钟后重置`
+            : remainingHours < 24
+              ? `${Math.round(remainingHours)} 小时后重置`
+              : `${Math.round(remainingHours / 24)} 天后重置`
       const credits = entry.credits ?? {}
       const creditText = credits.remaining !== null && credits.remaining !== undefined
         ? `${count(credits.remaining)} / ${count(credits.limit)}`
         : null
       const meta = [creditText, resetText].filter((part) => part !== null).join(' · ')
       const outlook = outlookLine(entry)
-      const resetTitle = when(entry.resetAt) ?? ''
+      const resetTitle = remainingHours !== null && remainingHours >= 0
+        ? `重置于 ${when(entry.resetAt) ?? ''}`
+        : ''
 
       return h('div', { className: 'ql-win', style: { '--ql-i': index } }, [
         h('div', { key: 'head', className: 'ql-win-head' }, [
@@ -969,6 +1048,17 @@ window.__ModuleLoader__.load({
       const usage = reading?.usage ?? null
       const billing = reading?.billing ?? null
       const amount = reading?.money?.amount
+      const expiry = expiryNotice(reading?.money?.expiresAt ?? null)
+      // Cache savings only appear when the records carried usable prices; a
+      // partial sample would understate them, so an incomplete total is dropped
+      // rather than shown small.
+      const cacheSaved = usage?.today?.cacheSavedComplete === true
+        && typeof usage.today.cacheSaved === 'number'
+        ? usage.today.cacheSaved
+        : null
+      const cacheTitle = cacheSaved === null
+        ? null
+        : `缓存读取 ${compactTokens(usage.today.cacheRead ?? 0)} tokens，占输入 ${share(usage.today.cacheRead, usage.today.input)}`
       const text = pillText(snapshot, mode)
       // The ring mirrors the text: it shows the cycle the pill names, so a
       // "仅 7d" pill never draws a 5-hour arc.
@@ -1022,7 +1112,13 @@ window.__ModuleLoader__.load({
             h('span', { key: 'v', className: 'ql-hero-value' }, money(amount, reading.money.currency ?? 'USD')),
             windows.length === 0
               ? h('span', { key: 'b', className: 'ql-badge' }, '无套餐窗口')
-              : null,
+              : reading?.channel === 'cookie'
+                // The plan pays first; this is what pays after the windows run dry.
+                ? h('span', { key: 'b', className: 'ql-badge' }, '套餐用完转扣这里')
+                : null,
+            expiry === null
+              ? null
+              : h('span', { key: 'exp', className: 'ql-expiry' }, `赠送额度 ${expiry.text}`),
           ]) : null,
 
           windows.length > 0
@@ -1042,6 +1138,15 @@ window.__ModuleLoader__.load({
               h('span', { key: 'k', className: 'ql-tok-k' }, '今日 token'),
               h('span', { key: 'v', className: 'ql-tok-v' }, compactTokens(usage.today.input + usage.today.output)),
             ]),
+            // Cached tokens bill at a fraction of the input rate, so the hit rate
+            // is what decides how far a plan goes. The number is a subtraction
+            // between two prices the vendor reports per record, not an estimate.
+            cacheSaved !== null && cacheSaved >= 0.01
+              ? h('div', { key: 'cache', className: 'ql-cache', title: cacheTitle }, [
+                h('span', { key: 'k', className: 'ql-cache-k' }, '缓存省下'),
+                h('span', { key: 'v', className: 'ql-cache-v' }, money(cacheSaved, 'USD')),
+              ])
+              : null,
             Array.isArray(usage.recent) && usage.recent.length > 0
               ? h('div', { key: 'calls', className: 'ql-calls' }, [
                 h('span', { key: 'cap', className: 'ql-calls-cap' }, '最近两次调用'),
@@ -1052,7 +1157,11 @@ window.__ModuleLoader__.load({
                     style: { '--ql-i': index },
                   }, [
                     h('span', { key: 'm', className: 'ql-call-model', title: row.model }, row.model),
-                    h('span', { key: 't', className: 'ql-call-time' }, when(row.at, true) ?? '—'),
+                    h('span', {
+                      key: 't',
+                      className: 'ql-call-time',
+                      title: when(row.at) ?? '',
+                    }, relativeTime(row.at) ?? '—'),
                   ]))),
               ])
               : null,
