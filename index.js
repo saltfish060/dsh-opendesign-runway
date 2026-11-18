@@ -1,5 +1,5 @@
 /**
- * dsh-opendesign-quota — host half.
+ * dsh-opendesign-runway — host half.
  *
  * One provider, one reading contract. What it deliberately does not do: write the
  * vendor's config file, drive a password login (the console requires Turnstile),
@@ -19,7 +19,7 @@ import { createStore } from './lib/store.js'
 import { describeError, echo } from './lib/http.js'
 import { createLoginFlow, defaultVerifier, isRemoteAuthority, loginAvailability } from './login/session-harvest.js'
 
-export const name = 'opendesign-quota'
+export const name = 'opendesign-runway'
 export const inject = ['tools']
 
 /**
@@ -34,10 +34,10 @@ export const PROVIDER_ALIASES = Object.freeze(['opendesign', 'open-design', 'ope
 
 /** Browser-half routes. */
 export const PATHS = Object.freeze({
-  snapshot: '/api/opendesign-quota/snapshot',
-  login: '/api/opendesign-quota/login',
-  credential: '/api/opendesign-quota/credential',
-  logout: '/api/opendesign-quota/logout',
+  snapshot: '/api/opendesign-runway/snapshot',
+  login: '/api/opendesign-runway/login',
+  credential: '/api/opendesign-runway/credential',
+  logout: '/api/opendesign-runway/logout',
 })
 
 /** Default refresh floor, in seconds. */
@@ -160,7 +160,7 @@ export function apply(ctx) {
       return JSON.stringify(reading, null, 2)
     },
   }
-  ctx.effect(() => tools.register(quotaTool), 'opendesign-quota: quota_lens')
+  ctx.effect(() => tools.register(quotaTool), 'opendesign-runway: quota_lens')
 
   // ── interactive sign-in ──────────────────────────────────────────────────
   const loginFlow = createLoginFlow({
@@ -171,7 +171,7 @@ export function apply(ctx) {
       store.clearCooldown(PROVIDER)
     },
   })
-  ctx.effect(() => () => { void loginFlow.dispose() }, 'opendesign-quota: sign-in teardown')
+  ctx.effect(() => () => { void loginFlow.dispose() }, 'opendesign-runway: sign-in teardown')
 
   // ── routes for the browser half ──────────────────────────────────────────
   ctx.inject(['connection'], (cctx) => {
@@ -180,9 +180,9 @@ export function apply(ctx) {
 
     const mount = (path, methods, handler, label) => {
       try {
-        cctx.effect(() => conn.fetch.register({ path, methods, requestBody: 'buffered', fetch: handler }), `opendesign-quota: ${label}`)
+        cctx.effect(() => conn.fetch.register({ path, methods, requestBody: 'buffered', fetch: handler }), `opendesign-runway: ${label}`)
       } catch (error) {
-        console.error('[opendesign-quota]', `${label} registration skipped: ${describeError(error)}`)
+        console.error('[opendesign-runway]', `${label} registration skipped: ${describeError(error)}`)
       }
     }
 

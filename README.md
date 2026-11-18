@@ -1,4 +1,4 @@
-# dsh-opendesign-quota
+# dsh-opendesign-runway
 
 在 DeepSeek Harness 的输入框旁显示 OpenDesign 的套餐额度和钱包余额。
 
@@ -39,13 +39,13 @@
 从 npm 安装：
 
 ```
-dsh plugin --profile desktop add dsh-opendesign-quota
+dsh plugin --profile desktop add dsh-opendesign-runway
 ```
 
 从 GitHub 安装：
 
 ```
-dsh plugin --profile desktop add github:saltfish060/dsh-opendesign-quota
+dsh plugin --profile desktop add github:saltfish060/dsh-opendesign-runway
 ```
 
 装完重启 DSH。

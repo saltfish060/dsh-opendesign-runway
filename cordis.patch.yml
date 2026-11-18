@@ -1,4 +1,4 @@
 - insert:
-    - id: opendesign-quota
-      name: dsh-opendesign-quota
+    - id: opendesign-runway
+      name: dsh-opendesign-runway
       config: {}

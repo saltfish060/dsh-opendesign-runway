@@ -1,5 +1,5 @@
 /**
- * dsh-opendesign-quota — browser half.
+ * dsh-opendesign-runway — browser half.
  *
  * Two surfaces:
  *   - `conversation.input.right` — a compact pill that opens a detail panel.
@@ -26,7 +26,7 @@
  */
 
 window.__ModuleLoader__.load({
-  id: 'dsh-opendesign-quota',
+  id: 'dsh-opendesign-runway',
   factory(require) {
     const React = require('react')
     const h = React.createElement
@@ -36,10 +36,10 @@ window.__ModuleLoader__.load({
     const PROVIDER_LABEL = 'OpenDesign'
 
     const PATHS = {
-      snapshot: '/api/opendesign-quota/snapshot',
-      login: '/api/opendesign-quota/login',
-      credential: '/api/opendesign-quota/credential',
-      logout: '/api/opendesign-quota/logout',
+      snapshot: '/api/opendesign-runway/snapshot',
+      login: '/api/opendesign-runway/login',
+      credential: '/api/opendesign-runway/credential',
+      logout: '/api/opendesign-runway/logout',
     }
 
     const POLL_MS = 30_000
@@ -537,8 +537,8 @@ window.__ModuleLoader__.load({
       none: '不显示',
     })
 
-    const PILL_MODE_KEY = 'opendesign-quota.pillMode'
-    const INDICATOR_KEY = 'opendesign-quota.indicator'
+    const PILL_MODE_KEY = 'opendesign-runway.pillMode'
+    const INDICATOR_KEY = 'opendesign-runway.indicator'
 
     /**
      * Carry a stored mode from an older build forward.
@@ -872,7 +872,7 @@ window.__ModuleLoader__.load({
      * immediately — marked as stale — is better than showing nothing, as long as
      * the age is visible and a real read is already on its way.
      */
-    const SNAPSHOT_CACHE_KEY = 'opendesign-quota.lastSnapshot'
+    const SNAPSHOT_CACHE_KEY = 'opendesign-runway.lastSnapshot'
     const CACHE_MAX_AGE_MS = 30 * 60 * 1000
 
     /** Read the cached snapshot for one provider, or null when unusable. */
@@ -1319,39 +1319,39 @@ window.__ModuleLoader__.load({
 
         ctx.effect(() => {
           const style = document.createElement('style')
-          style.setAttribute('data-plugin', 'opendesign-quota')
+          style.setAttribute('data-plugin', 'opendesign-runway')
           style.textContent = CSS
           document.head.appendChild(style)
           return () => { style.remove() }
-        }, 'opendesign-quota: styles')
+        }, 'opendesign-runway: styles')
 
         ctx.effect(() => {
           try {
             return ctx.slots.inject('conversation.input.right', () => ctx.slots.register({
               name: 'conversation.input.right',
-              id: 'opendesign-quota-pill',
+              id: 'opendesign-runway-pill',
               order: 42,
               inject: (sessionId) => ({ sessionId, directories: directoryAccess }),
             }, Pill))
           } catch (cause) {
-            console.error('opendesign-quota: could not register the pill', cause)
+            console.error('opendesign-runway: could not register the pill', cause)
             return () => {}
           }
-        }, 'opendesign-quota: pill')
+        }, 'opendesign-runway: pill')
 
         ctx.effect(() => {
           try {
             return ctx.slots.inject('settings.section', () => ctx.slots.register({
               name: 'settings.section',
-              id: 'opendesign-quota',
+              id: 'opendesign-runway',
               order: 31,
               label: () => 'OpenDesign',
             }, SettingsSection))
           } catch (cause) {
-            console.error('opendesign-quota: could not register the settings section', cause)
+            console.error('opendesign-runway: could not register the settings section', cause)
             return () => {}
           }
-        }, 'opendesign-quota: settings section')
+        }, 'opendesign-runway: settings section')
       },
     }
   },
