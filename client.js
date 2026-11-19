@@ -119,8 +119,8 @@ window.__ModuleLoader__.load({
   position:absolute;bottom:38px;right:0;z-index:60;
   width:min(336px,calc(100vw - 32px));max-height:min(70vh,560px);overflow-y:auto;
   overscroll-behavior:contain;scrollbar-width:thin;
-  box-sizing:border-box;padding:14px;
-  display:flex;flex-direction:column;gap:12px;
+  box-sizing:border-box;padding:13px;
+  display:flex;flex-direction:column;gap:9px;
   border:.5px solid var(--dsw-alias-border-l3);border-radius:14px;
   /* Elevation: lift the surface away from the page, whichever way that is. */
   background:var(--dsw-alias-bg-layer-3);
@@ -151,21 +151,17 @@ window.__ModuleLoader__.load({
   overflow-wrap:anywhere}
 .ql-sub.is-truncate{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
-/* ── wallet ───────────────────────────────────────────────────────────── */
-/* One line in the same column as the windows, at the same type size. No card:
-   the plan figures are what this panel exists for, and a framed block around a
-   single amount spent more room than it carried. */
-.ql-wallet{display:flex;align-items:baseline;justify-content:space-between;
-  gap:12px;min-width:0}
-.ql-wallet-k{color:var(--dsw-alias-label-secondary);font-size:12px;line-height:1;
-  white-space:nowrap}
-.ql-wallet-v{font-size:12px;font-weight:600;line-height:1;letter-spacing:-.005em;
-  font-variant-numeric:tabular-nums;white-space:nowrap}
+/* ── account rows ─────────────────────────────────────────────────────── */
+/* Plan tier and wallet: two facts about the account, stacked under the gauges.
+   One column of labels, one column of values, a hairline above. No card, no
+   badge — the numbers are small and the gauges are the subject. */
+.ql-meta{display:flex;flex-direction:column;gap:2px;padding-top:9px;
+  border-top:.5px solid var(--dsw-alias-border-l2)}
 
 /* ── rows ─────────────────────────────────────────────────────────────── */
-.ql-row{display:flex;align-items:baseline;justify-content:space-between;gap:12px;min-height:23px;min-width:0}
-.ql-k{color:var(--dsw-alias-label-tertiary);min-width:0;overflow-wrap:anywhere}
-.ql-v{font-variant-numeric:tabular-nums;white-space:nowrap;flex:none}
+.ql-row{display:flex;align-items:baseline;justify-content:space-between;gap:12px;min-height:21px;min-width:0}
+.ql-k{color:var(--dsw-alias-label-tertiary);min-width:0;overflow-wrap:anywhere;font-size:12px}
+.ql-v{font-variant-numeric:tabular-nums;white-space:nowrap;flex:none;font-size:12px}
 .ql-v.is-strong{font-weight:600;font-size:13px}
 
 /* ── windows ──────────────────────────────────────────────────────────── */
@@ -1051,15 +1047,19 @@ window.__ModuleLoader__.load({
             : h('span', { key: 'nowins', className: 'ql-sub' },
               reading?.message ?? '这个账号当前没有套餐窗口。'),
 
-          // The wallet is one more line in the same column as the windows, at the
-          // same size: it is supporting detail, and a card of its own took more
-          // room than the plan figures the panel exists for.
-          typeof amount === 'number' ? h('div', { key: 'hero', className: 'ql-wallet' }, [
-            h('span', { key: 'k', className: 'ql-wallet-k' }, '钱包余额'),
-            h('span', { key: 'v', className: 'ql-wallet-v' }, money(amount, reading.money.currency ?? 'USD')),
-          ]) : null,
-
-          reading?.tier ? h(Row, { key: 'tier', label: '套餐', value: String(reading.tier).toUpperCase() }) : null,
+          // Account facts under the windows: the plan, then the money behind it.
+          // Both are single key/value rows so the labels line up in one column,
+          // and a hairline separates them from the window gauges above.
+          reading?.tier != null || typeof amount === 'number'
+            ? h('div', { key: 'meta', className: 'ql-meta' }, [
+              reading?.tier
+                ? h(Row, { key: 'tier', label: '套餐', value: String(reading.tier).toUpperCase() })
+                : null,
+              typeof amount === 'number'
+                ? h(Row, { key: 'wallet', label: '钱包余额', value: money(amount, reading.money.currency ?? 'USD') })
+                : null,
+            ])
+            : null,
 
           // Delivery note: the usage block is deliberately terse. A truncated
           // page count is a limitation of the read, not a fact about the account,
