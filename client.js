@@ -197,6 +197,21 @@ window.__ModuleLoader__.load({
 .ql-bar-fill.is-warn{background-color:var(--dsw-alias-state-warn-primary)}
 .ql-bar-fill.is-low{background-color:var(--dsw-alias-state-error-primary)}
 
+/* The settings page draws its bars on arrival: the fill grows from the left as
+   the section mounts. A quota bar is the one element there worth a flourish, and
+   it is seen once per visit rather than on every open.
+   Both the scale and the wipe run from the same custom property, so an updated
+   percentage retargets without replaying the entrance. */
+@keyframes ql-grow-in{
+  from{transform:scaleX(0)}
+  to{transform:scaleX(var(--ql-pct,1))}
+}
+.ql-bar-fill.is-grow{
+  transform:scaleX(var(--ql-pct,1));
+  animation:ql-grow-in 520ms cubic-bezier(.22,1,.36,1) both;
+  animation-delay:calc(var(--ql-i,0) * 90ms + 120ms)
+}
+
 /* ── misc ─────────────────────────────────────────────────────────────── */
 .ql-sep{height:.5px;background:var(--dsw-alias-border-l2);margin:3px 0}
 
@@ -268,6 +283,11 @@ window.__ModuleLoader__.load({
 .ql-srow{display:flex;align-items:center;justify-content:space-between;gap:14px;
   min-height:38px;padding:9px 12px;min-width:0}
 .ql-srow + .ql-srow{border-top:.5px solid var(--dsw-alias-border-l2)}
+/* Settings rows arrive in sequence as the section mounts. This is a page a reader
+   opens occasionally, not an element they toggle repeatedly, so the entrance is
+   allowed to be noticed. */
+.ql-group .ql-srow{animation:ql-srow-in 300ms cubic-bezier(.23,1,.32,1) both;
+  animation-delay:calc(var(--ql-i,0) * 45ms + 200ms)}
 .ql-srow-k{flex:none;color:var(--dsw-alias-label-secondary);font-size:12.5px;
   white-space:nowrap}
 
@@ -278,13 +298,13 @@ window.__ModuleLoader__.load({
   align-items:center;gap:6px;flex-wrap:wrap}
 .ql-srow.is-stacked .ql-srow-v{justify-content:flex-start;flex:0 0 auto}
 
-/* The readout at the top of the settings page: a window row carries its name,
-   percentage and bar, so it stacks; plain facts stay on one line. */
-.ql-srow-line{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
-  min-width:0}
-.ql-srow-pct{font-size:12px;font-weight:600;line-height:1;flex:none;
-  font-variant-numeric:tabular-nums}
-.ql-sbar{height:5px;margin-top:1px}
+/* The readout at the top of the settings page reuses the panel's window row, so
+   the two places look like the same product. Only the entrance differs. */
+.ql-wins-grow{gap:16px;padding:11px 12px 10px}
+.ql-win.is-grow{gap:5px;animation:ql-srow-in 320ms cubic-bezier(.23,1,.32,1) both;
+  animation-delay:calc(var(--ql-i,0) * 70ms)}
+@keyframes ql-srow-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
 .ql-srow-val{font-size:12px;line-height:1.3;font-variant-numeric:tabular-nums;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ql-srow-note{font-size:12px;line-height:1.3;color:var(--dsw-alias-label-tertiary);
@@ -345,8 +365,9 @@ window.__ModuleLoader__.load({
 
 /* ── reduced motion: one switch, everything off ───────────────────────── */
 @media (prefers-reduced-motion:reduce){
-  .ql-panel,.ql-panel > *,.ql-win,.ql-call{animation:none}
-  .ql-bar-fill,.ql-ring,.ql-ring-fill,.ql-pill,.ql-btn,.ql-mode,.ql-input{transition:none}
+  .ql-panel,.ql-panel > *,.ql-win,.ql-call,.ql-srow,.ql-group{animation:none}
+  .ql-bar-fill,.ql-bar-fill.is-grow,.ql-ring,.ql-ring-fill,.ql-pill,.ql-btn,.ql-mode,.ql-input{transition:none;animation:none}
+  .ql-bar-fill.is-grow{transform:scaleX(var(--ql-pct,1))}
   .ql-pill:active,.ql-btn:active:not(:disabled),.ql-mode:active{transform:none}
 }`
 
@@ -845,7 +866,7 @@ window.__ModuleLoader__.load({
      * supporting detail; giving each its own row doubled the panel's height for
      * numbers that belong together.
      */
-    function WindowRow({ entry, index }) {
+    function WindowRow({ entry, index, grow = false }) {
       const pct = typeof entry.remainingPct === 'number' ? entry.remainingPct : null
       const remainingHours = hoursUntil(entry.resetAt)
       // "3 小时后重置" answers when, but not what the reader actually wants to
@@ -870,8 +891,12 @@ window.__ModuleLoader__.load({
       const resetTitle = remainingHours !== null && remainingHours >= 0
         ? `重置于 ${when(entry.resetAt) ?? ''}`
         : ''
+      const ratio = pct === null ? 0 : Math.max(0, Math.min(100, pct)) / 100
 
-      return h('div', { className: 'ql-win', style: { '--ql-i': index } }, [
+      return h('div', {
+        className: grow ? 'ql-win is-grow' : 'ql-win',
+        style: { '--ql-i': index },
+      }, [
         h('div', { key: 'head', className: 'ql-win-head' }, [
           h('span', { key: 'n', className: 'ql-win-name', title: entry.label }, entry.label),
           h('span', { key: 'p', className: 'ql-win-pct' }, pct === null ? '不可读' : `${Math.round(pct)}%`),
@@ -887,8 +912,15 @@ window.__ModuleLoader__.load({
             'aria-valuemin': 0,
             'aria-valuemax': 100,
           }, h('div', {
-            className: `ql-bar-fill ${toneClass(pct)}`,
-            style: { transform: `scaleX(${Math.max(0, Math.min(100, pct)) / 100})` },
+            // On the settings page the bar draws itself on arrival; the panel
+            // keeps the plain fill, because a pill opened and closed repeatedly
+            // must not replay an entrance.
+            className: grow
+              ? `ql-bar-fill is-grow ${toneClass(pct)}`
+              : `ql-bar-fill ${toneClass(pct)}`,
+            style: grow
+              ? { '--ql-pct': ratio }
+              : { transform: `scaleX(${ratio})` },
           })),
         meta === '' ? null : h('span', { key: 'm', className: 'ql-win-meta', title: resetTitle }, meta),
         outlook === null
@@ -1264,43 +1296,25 @@ window.__ModuleLoader__.load({
           healthy
             ? h('div', { key: 'g', className: 'ql-group' }, [
               windows.length > 0
-                ? windows.map((entry) => h('div', { key: entry.key, className: 'ql-srow is-stacked' }, [
-                  h('div', { key: 'head', className: 'ql-srow-line' }, [
-                    h('span', { key: 'k', className: 'ql-srow-k' }, entry.label),
-                    h('span', { key: 'p', className: 'ql-srow-pct' },
-                      typeof entry.remainingPct === 'number' ? `${Math.round(entry.remainingPct)}%` : '不可读'),
-                  ]),
-                  typeof entry.remainingPct === 'number'
-                    ? h('div', {
-                      key: 'bar',
-                      className: 'ql-bar ql-sbar',
-                      role: 'progressbar',
-                      'aria-label': `${entry.label} 剩余`,
-                      'aria-valuenow': Math.round(entry.remainingPct),
-                      'aria-valuemin': 0,
-                      'aria-valuemax': 100,
-                    }, h('div', {
-                      className: `ql-bar-fill ${toneClass(entry.remainingPct)}`,
-                      style: { transform: `scaleX(${Math.max(0, Math.min(100, entry.remainingPct)) / 100})` },
-                    }))
-                    : null,
-                ])) : null,
-              h('div', { key: 'tier', className: 'ql-srow' }, [
+                ? h('div', { key: 'wins', className: 'ql-wins ql-wins-grow' },
+                  windows.map((entry, index) => h(WindowRow, { key: entry.key, entry, index, grow: true })))
+                : null,
+              h('div', { key: 'tier', className: 'ql-srow', style: { '--ql-i': 2 } }, [
                 h('span', { key: 'k', className: 'ql-srow-k' }, '套餐'),
                 h('div', { key: 'v', className: 'ql-srow-v' },
                   h('span', { key: 't', className: 'ql-srow-val' }, String(reading.tier ?? '—').toUpperCase())),
               ]),
-              walletAmount === null ? null : h('div', { key: 'wallet', className: 'ql-srow' }, [
+              walletAmount === null ? null : h('div', { key: 'wallet', className: 'ql-srow', style: { '--ql-i': 3 } }, [
                 h('span', { key: 'k', className: 'ql-srow-k' }, '钱包余额'),
                 h('div', { key: 'v', className: 'ql-srow-v' },
                   h('span', { key: 't', className: 'ql-srow-val' }, money(walletAmount, reading.money.currency ?? 'USD'))),
               ]),
-              tokensToday === null ? null : h('div', { key: 'tok', className: 'ql-srow' }, [
+              tokensToday === null ? null : h('div', { key: 'tok', className: 'ql-srow', style: { '--ql-i': 4 } }, [
                 h('span', { key: 'k', className: 'ql-srow-k' }, '今日 token'),
                 h('div', { key: 'v', className: 'ql-srow-v' },
                   h('span', { key: 't', className: 'ql-srow-val' }, compactTokens(tokensToday))),
               ]),
-              readAt === null ? null : h('div', { key: 'at', className: 'ql-srow' }, [
+              readAt === null ? null : h('div', { key: 'at', className: 'ql-srow', style: { '--ql-i': 5 } }, [
                 h('span', { key: 'k', className: 'ql-srow-k' }, '更新于'),
                 h('div', { key: 'v', className: 'ql-srow-v' },
                   h('span', { key: 't', className: 'ql-srow-note' }, readAt)),
@@ -1351,7 +1365,7 @@ window.__ModuleLoader__.load({
         h('section', { key: 'cred', className: 'ql-group-wrap' }, [
           h('span', { key: 'cap', className: 'ql-group-cap' }, '凭据'),
           h('div', { key: 'g', className: 'ql-group' }, [
-            h('div', { key: 'sess', className: 'ql-srow' }, [
+            h('div', { key: 'sess', className: 'ql-srow', style: { '--ql-i': 0 } }, [
               h('span', { key: 'k', className: 'ql-srow-k' }, '浏览器会话'),
               h('div', { key: 'v', className: 'ql-srow-v' },
                 h('span', { className: session.set ? 'ql-state is-on' : 'ql-state' }, [
@@ -1359,7 +1373,7 @@ window.__ModuleLoader__.load({
                     session.set ? `已保存 · ${session.tail}` : '未保存'),
                 ])),
             ]),
-            h('div', { key: 'ck', className: 'ql-srow' }, [
+            h('div', { key: 'ck', className: 'ql-srow', style: { '--ql-i': 1 } }, [
               h('span', { key: 'k', className: 'ql-srow-k' }, 'controlKey'),
               h('div', { key: 'v', className: 'ql-srow-v' },
                 h('span', {
