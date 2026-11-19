@@ -278,6 +278,18 @@ window.__ModuleLoader__.load({
   align-items:center;gap:6px;flex-wrap:wrap}
 .ql-srow.is-stacked .ql-srow-v{justify-content:flex-start;flex:0 0 auto}
 
+/* The readout at the top of the settings page: a window row carries its name,
+   percentage and bar, so it stacks; plain facts stay on one line. */
+.ql-srow-line{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+  min-width:0}
+.ql-srow-pct{font-size:12px;font-weight:600;line-height:1;flex:none;
+  font-variant-numeric:tabular-nums}
+.ql-sbar{height:5px;margin-top:1px}
+.ql-srow-val{font-size:12px;line-height:1.3;font-variant-numeric:tabular-nums;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ql-srow-note{font-size:12px;line-height:1.3;color:var(--dsw-alias-label-tertiary);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
 /* Credential state: a dot plus one short phrase, right-aligned. */
 .ql-state{display:inline-flex;align-items:center;gap:6px;max-width:100%;
   color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:1.4}
@@ -1125,7 +1137,7 @@ window.__ModuleLoader__.load({
       ])
     }
 
-    /** The settings section: credentials only. */
+    /** The settings section: live readout, display choices, credentials. */
     function SettingsSection() {
       const { mode, indicator } = usePrefs()
       const [snapshot, setSnapshot] = React.useState(null)
@@ -1142,11 +1154,18 @@ window.__ModuleLoader__.load({
         }
       }, [])
 
+      // Fast polling exists to notice a sign-in completing in another window. The
+      // reading does not need that cadence, so the cycle stays slow and speeds up
+      // only while a login is actually in flight.
+      const pending = snapshot?.login?.state === 'starting' || snapshot?.login?.state === 'pending'
       React.useEffect(() => {
         void refresh()
-        const timer = setInterval(refresh, LOGIN_POLL_MS)
+        const timer = setInterval(
+          () => { void refresh() },
+          pending ? LOGIN_POLL_MS : POLL_MS,
+        )
         return () => clearInterval(timer)
-      }, [refresh])
+      }, [refresh, pending])
 
       async function signIn() {
         setBusy(true)
@@ -1220,7 +1239,81 @@ window.__ModuleLoader__.load({
       // real cycles instead of assuming 5h/7d.
       const windows = Array.isArray(snapshot?.reading?.windows) ? snapshot.reading.windows : []
 
+      // The readout at the top: someone who hid the pill entirely still opens this
+      // page, and owes themselves the numbers rather than only the switches.
+      const reading = snapshot?.reading ?? null
+      const healthy = reading?.status === 'ok'
+      const walletAmount = healthy && typeof reading?.money?.amount === 'number' ? reading.money.amount : null
+      const usage = healthy ? (reading?.usage ?? null) : null
+      const tokensToday = usage !== null && usage.today !== undefined
+        ? (usage.today.input ?? 0) + (usage.today.output ?? 0)
+        : null
+      // The reading's own timestamp, not the snapshot's: a cached reading keeps
+      // its original time, and `asOf` is when the page asked — which would always
+      // read "just now" even for numbers an hour old.
+      const readAtIso = typeof reading?.queriedAt === 'number'
+        ? new Date(reading.queriedAt).toISOString()
+        : (typeof snapshot?.asOf === 'number' ? new Date(snapshot.asOf).toISOString() : null)
+      const readAt = readAtIso === null ? null : relativeTime(readAtIso)
+
       return h('div', { className: 'ql-settings' }, [
+        // Numbers first: a page whose only content is switches tells a reader
+        // nothing about their account.
+        h('section', { key: 'now', className: 'ql-group-wrap' }, [
+          h('span', { key: 'cap', className: 'ql-group-cap' }, '当前'),
+          healthy
+            ? h('div', { key: 'g', className: 'ql-group' }, [
+              windows.length > 0
+                ? windows.map((entry) => h('div', { key: entry.key, className: 'ql-srow is-stacked' }, [
+                  h('div', { key: 'head', className: 'ql-srow-line' }, [
+                    h('span', { key: 'k', className: 'ql-srow-k' }, entry.label),
+                    h('span', { key: 'p', className: 'ql-srow-pct' },
+                      typeof entry.remainingPct === 'number' ? `${Math.round(entry.remainingPct)}%` : '不可读'),
+                  ]),
+                  typeof entry.remainingPct === 'number'
+                    ? h('div', {
+                      key: 'bar',
+                      className: 'ql-bar ql-sbar',
+                      role: 'progressbar',
+                      'aria-label': `${entry.label} 剩余`,
+                      'aria-valuenow': Math.round(entry.remainingPct),
+                      'aria-valuemin': 0,
+                      'aria-valuemax': 100,
+                    }, h('div', {
+                      className: `ql-bar-fill ${toneClass(entry.remainingPct)}`,
+                      style: { transform: `scaleX(${Math.max(0, Math.min(100, entry.remainingPct)) / 100})` },
+                    }))
+                    : null,
+                ])) : null,
+              h('div', { key: 'tier', className: 'ql-srow' }, [
+                h('span', { key: 'k', className: 'ql-srow-k' }, '套餐'),
+                h('div', { key: 'v', className: 'ql-srow-v' },
+                  h('span', { key: 't', className: 'ql-srow-val' }, String(reading.tier ?? '—').toUpperCase())),
+              ]),
+              walletAmount === null ? null : h('div', { key: 'wallet', className: 'ql-srow' }, [
+                h('span', { key: 'k', className: 'ql-srow-k' }, '钱包余额'),
+                h('div', { key: 'v', className: 'ql-srow-v' },
+                  h('span', { key: 't', className: 'ql-srow-val' }, money(walletAmount, reading.money.currency ?? 'USD'))),
+              ]),
+              tokensToday === null ? null : h('div', { key: 'tok', className: 'ql-srow' }, [
+                h('span', { key: 'k', className: 'ql-srow-k' }, '今日 token'),
+                h('div', { key: 'v', className: 'ql-srow-v' },
+                  h('span', { key: 't', className: 'ql-srow-val' }, compactTokens(tokensToday))),
+              ]),
+              readAt === null ? null : h('div', { key: 'at', className: 'ql-srow' }, [
+                h('span', { key: 'k', className: 'ql-srow-k' }, '更新于'),
+                h('div', { key: 'v', className: 'ql-srow-v' },
+                  h('span', { key: 't', className: 'ql-srow-note' }, readAt)),
+              ]),
+            ])
+            : h('div', { key: 'g', className: 'ql-group' }, h('div', { className: 'ql-srow' }, [
+              h('span', { key: 'k', className: 'ql-srow-k' }, '读数'),
+              h('div', { key: 'v', className: 'ql-srow-v' },
+                h('span', { key: 't', className: 'ql-srow-note' },
+                  reading === null ? '读取中…' : (reading.message ?? '暂时读不到额度。'))),
+            ])),
+        ]),
+
         // Display: the two choices this page exists for.
         h('section', { key: 'display', className: 'ql-group-wrap' }, [
           h('span', { key: 'cap', className: 'ql-group-cap' }, '显示'),
