@@ -4,9 +4,7 @@ import test from 'node:test'
 import { summarizeUsage, parseUsageRecord } from '../adapters/opendesign.js'
 
 /**
- * The panel's usage block shows two things only: today's token burn and the two
- * most recent calls (model + time). These tests pin exactly that data, so a
- * change in aggregation cannot silently blank or bloat the panel.
+ * Calls share one data block for the settings history and the compact pill panel.
  */
 
 const ENTRY = {
@@ -27,22 +25,24 @@ test('今日 token is input plus output, excluding cache reads', () => {
   assert.equal(summary.today.cacheRead, 556672)
 })
 
-test('the two most recent calls carry model and time, newest first', () => {
+test('recent calls carry model, time and initiator, newest first', () => {
   const records = [
-    parseUsageRecord({ ...ENTRY, model: 'model-newest', createdAt: '2026-11-17T12:00:00.000Z' }),
-    parseUsageRecord({ ...ENTRY, model: 'model-second', createdAt: '2026-11-17T11:00:00.000Z' }),
-    parseUsageRecord({ ...ENTRY, model: 'model-third', createdAt: '2026-11-17T10:00:00.000Z' }),
+    parseUsageRecord({ ...ENTRY, model: 'model-newest', initiator: '  Workspace member  ', createdAt: '2026-11-17T12:00:00.000Z' }),
+    parseUsageRecord({ ...ENTRY, model: 'model-second', initiator: '  ', createdAt: '2026-11-17T11:00:00.000Z' }),
+    parseUsageRecord({ ...ENTRY, model: 'model-third', initiator: { name: 'invalid' }, createdAt: '2026-11-17T10:00:00.000Z' }),
   ]
   const summary = summarizeUsage(records)
-  assert.equal(summary.recent.length, 2)
-  assert.deepEqual(summary.recent[0], { model: 'model-newest', at: '2026-11-17T12:00:00.000Z' })
-  assert.deepEqual(summary.recent[1], { model: 'model-second', at: '2026-11-17T11:00:00.000Z' })
+  assert.equal(summary.recent.length, 3)
+  assert.deepEqual(summary.recent[0], { model: 'model-newest', at: '2026-11-17T12:00:00.000Z', initiator: 'Workspace member' })
+  assert.deepEqual(summary.recent[1], { model: 'model-second', at: '2026-11-17T11:00:00.000Z', initiator: null })
+  assert.equal(summary.recent[2].initiator, null)
 })
 
-test('a single record yields one recent call, not a padded pair', () => {
+test('a single record yields one recent call without padding', () => {
   const summary = summarizeUsage([parseUsageRecord(ENTRY)])
   assert.equal(summary.recent.length, 1)
   assert.equal(summary.recent[0].model, 'deepseek-v4.1-flash')
+  assert.equal(summary.recent[0].initiator, null)
 })
 
 test('a record with no model still appears, under the placeholder', () => {

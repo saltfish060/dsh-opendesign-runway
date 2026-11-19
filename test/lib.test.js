@@ -61,6 +61,19 @@ test('store: the refresh floor holds until minIntervalMs elapses', () => {
   assert.equal(store.mayAutoRefresh('p'), true)
 })
 
+test('store: a caller can wait longer but cannot lower the upstream refresh floor', () => {
+  let t = 100_000
+  const store = createStore({ now: () => t, minIntervalMs: 60_000 })
+  store.recordSuccess('p', { status: 'ok', queriedAt: t })
+  t += 30_000
+  assert.equal(store.mayAutoRefresh('p', 30_000), false)
+  t += 30_000
+  assert.equal(store.mayAutoRefresh('p'), true)
+  assert.equal(store.mayAutoRefresh('p', 120_000), false)
+  t += 60_000
+  assert.equal(store.mayAutoRefresh('p', 120_000), true)
+})
+
 test('store: a failure arms the cooldown and a forced refresh clears it', () => {
   let clock = 0
   const store = createStore({ cooldownMs: 300_000, now: () => clock })
@@ -79,6 +92,22 @@ test('store: concurrent callers share one request', async () => {
   assert.equal(first, 'value')
   assert.equal(second, 'value')
   assert.equal(runs, 1)
+})
+
+test('store: invalidation detaches an old request and clears its account data', async () => {
+  const store = createStore()
+  store.recordSuccess('p', { status: 'ok', queriedAt: Date.now() })
+  const old = Promise.withResolvers()
+  const next = Promise.withResolvers()
+  const oldRead = store.coalesce('p', () => old.promise)
+  store.invalidate('p')
+  assert.equal(store.get('p').status, 'no-reading')
+  const freshRead = store.coalesce('p', () => next.promise)
+  old.resolve('old')
+  await oldRead
+  assert.equal(store.coalesce('p', () => 'duplicate'), freshRead)
+  next.resolve('new')
+  assert.equal(await freshRead, 'new')
 })
 
 test('AMR config is resolved the way the vendor CLI resolves it', () => {

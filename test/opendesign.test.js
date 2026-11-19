@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { EventEmitter } from 'node:events'
+import https from 'node:https'
+import { syncBuiltinESMExports } from 'node:module'
 import test from 'node:test'
 
 import {
@@ -162,4 +165,57 @@ test('sourceLine names the channel and the credential tail', () => {
   assert.match(line, /FVel/)
   assert.match(line, /preflight/)
   assert.equal(sourceLine({ status: 'no-credential' }), null)
+})
+
+
+test('cookie subscription dates are read independently of wallet expiration', async (t) => {
+  const periodEnd = '2026-12-01T00:00:00Z'
+  const expiresAt = '2027-03-01T00:00:00Z'
+  let summaryStatus = 200
+  const paths = []
+  const responseFor = (path) => {
+    if (path === '/api/auth/get-session') return { session: { id: 'fake' } }
+    if (path.endsWith('/billing/coding-plan-usage')) return { codingPlan: { tier: 'go', windows: [] } }
+    if (path.endsWith('/wallet/balance')) return { balanceUsd: '1.10', expiresAt }
+    if (path.endsWith('/billing/usage?limit=100')) return { entries: [] }
+    if (path === '/api/v1/billing/summary') return {
+      subscriptionStatus: 'active', subscriptionCurrentPeriodEnd: periodEnd, subscriptionCancelAtPeriodEnd: true,
+    }
+    throw new Error(`Unexpected mock request: ${path}`)
+  }
+  const mock = t.mock.method(https, 'request', (options, callback) => {
+    paths.push(options.path)
+    assert.equal(options.headers.cookie, 'session=test')
+    assert.equal(options.headers.authorization, undefined)
+    const body = responseFor(options.path)
+    const request = new EventEmitter()
+    request.setTimeout = () => {}
+    request.end = () => queueMicrotask(() => {
+      const response = new EventEmitter()
+      response.statusCode = options.path.endsWith('/billing/summary') ? summaryStatus : 200
+      response.setEncoding = () => {}
+      callback(response)
+      response.emit('data', JSON.stringify(body))
+      response.emit('end')
+    })
+    return request
+  })
+  syncBuiltinESMExports()
+  try {
+    const read = () => readOpenDesign({ source: 'cookie', cookie: 'session=test', workspaceId: 'workspace' })
+    const reading = await read()
+    assert.equal(reading.status, 'ok')
+    assert.equal(reading.periodEnd, periodEnd)
+    assert.equal(reading.billing.cancelAtPeriodEnd, true)
+    assert.equal(reading.money.expiresAt, expiresAt)
+    assert.ok(paths.includes('/api/v1/billing/summary'))
+    summaryStatus = 403
+    const partial = await read()
+    assert.equal(partial.status, 'ok')
+    assert.equal(partial.periodEnd, null)
+    assert.equal(partial.money.expiresAt, expiresAt)
+  } finally {
+    mock.mock.restore()
+    syncBuiltinESMExports()
+  }
 })

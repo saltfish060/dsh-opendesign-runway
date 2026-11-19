@@ -96,20 +96,21 @@ test('neither timestamp means the row is omitted', () => {
 })
 
 /** Mirrors the polling interval choice. */
-const POLL_MS = 30_000
+const POLL_MS = 60_000
 const LOGIN_POLL_MS = 1_500
 
-function intervalFor(snapshot) {
+function intervalFor(snapshot, refreshMs = POLL_MS) {
   const state = snapshot?.login?.state
-  return state === 'starting' || state === 'pending' ? LOGIN_POLL_MS : POLL_MS
+  return state === 'starting' || state === 'pending' ? LOGIN_POLL_MS : refreshMs
 }
 
 test('polling is slow unless a sign-in is in flight', () => {
   assert.equal(intervalFor({ login: { state: 'idle' } }), POLL_MS)
   assert.equal(intervalFor({}), POLL_MS)
+  assert.equal(intervalFor({}, 300_000), 300_000)
 })
 
 test('a running sign-in speeds the cycle up', () => {
   assert.equal(intervalFor({ login: { state: 'starting' } }), LOGIN_POLL_MS)
-  assert.equal(intervalFor({ login: { state: 'pending' } }), LOGIN_POLL_MS)
+  assert.equal(intervalFor({ login: { state: 'pending' } }, 600_000), LOGIN_POLL_MS)
 })

@@ -4,7 +4,7 @@
  * Two surfaces:
  *   - `conversation.input.right` — a compact pill that opens a detail panel.
  *     It appears only while the session's model belongs to OpenDesign.
- *   - `settings.section` — credentials only: sign in, paste a cookie, clear it.
+ *   - `settings.section` — quota overview, display preferences, account connection.
  *
  * Styling decisions that are load-bearing, each one learned by measuring the
  * actual theme this runs under (catppuccin latte/mocha):
@@ -42,7 +42,10 @@ window.__ModuleLoader__.load({
       logout: '/api/opendesign-runway/logout',
     }
 
-    const POLL_MS = 30_000
+    const DEFAULT_REFRESH_SECONDS = 60
+    const REFRESH_OPTIONS = ['60', '120', '300', '600']
+    const CALLS_PER_PAGE = 5
+    const RECENT_CALLS_LIMIT = 20
     const LOGIN_POLL_MS = 1500
     const DASHBOARD = 'https://open-design.ai/cloud/dashboard'
 
@@ -92,27 +95,6 @@ window.__ModuleLoader__.load({
   color:var(--dsw-alias-state-warn-label);
   animation:ql-stale-in 300ms cubic-bezier(.23,1,.32,1) both}
 @keyframes ql-stale-in{from{opacity:0}to{opacity:1}}
-
-/* Display-mode chooser: small chips, one selected. */
-.ql-modes{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-start}
-.ql-mode{
-  height:26px;padding:0 11px;border:.5px solid var(--dsw-alias-border-l3);border-radius:999px;
-  background:transparent;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:12px;
-  white-space:nowrap;
-  cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;
-  transition:background-color 160ms cubic-bezier(.23,1,.32,1),
-             color 160ms cubic-bezier(.23,1,.32,1),
-             border-color 160ms cubic-bezier(.23,1,.32,1),
-             transform 160ms cubic-bezier(.23,1,.32,1);
-}
-.ql-mode:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}
-.ql-mode:active{transform:scale(.97)}
-.ql-mode:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
-.ql-mode.is-on{
-  color:var(--dsw-alias-label-primary);
-  border-color:var(--dsw-alias-brand-primary);
-  background:color-mix(in srgb, var(--dsw-alias-brand-primary) 16%, transparent);
-}
 
 /* ── panel ────────────────────────────────────────────────────────────── */
 .ql-panel{
@@ -197,19 +179,11 @@ window.__ModuleLoader__.load({
 .ql-bar-fill.is-warn{background-color:var(--dsw-alias-state-warn-primary)}
 .ql-bar-fill.is-low{background-color:var(--dsw-alias-state-error-primary)}
 
-/* The settings page draws its bars on arrival: the fill grows from the left as
-   the section mounts. A quota bar is the one element there worth a flourish, and
-   it is seen once per visit rather than on every open.
-   Both the scale and the wipe run from the same custom property, so an updated
-   percentage retargets without replaying the entrance. */
-@keyframes ql-grow-in{
-  from{transform:scaleX(0)}
-  to{transform:scaleX(var(--ql-pct,1))}
-}
+/* Settings bars draw once without blocking the numbers or actions. */
+@keyframes ql-grow-in{from{transform:scaleX(0)}}
 .ql-bar-fill.is-grow{
   transform:scaleX(var(--ql-pct,1));
-  animation:ql-grow-in 520ms cubic-bezier(.22,1,.36,1) both;
-  animation-delay:calc(var(--ql-i,0) * 90ms + 120ms)
+  animation:ql-grow-in 340ms cubic-bezier(.22,1,.36,1) backwards;
 }
 
 /* ── misc ─────────────────────────────────────────────────────────────── */
@@ -268,107 +242,110 @@ window.__ModuleLoader__.load({
   overflow-wrap:anywhere}
 
 /* ── settings ─────────────────────────────────────────────────────────── */
-/* A settings page reads best as labelled rows, not as stacked blocks: the label
-   is a fixed left column and the control sits right, so the eye can scan one
-   column of names. Grouping rows into a bordered card is what every settings
-   surface does; it also means the whole page is two cards plus one action row. */
-.ql-settings{display:flex;flex-direction:column;gap:16px;padding:4px 0;font-size:13px}
-
-.ql-group-cap{display:block;margin-bottom:6px;
-  color:var(--dsw-alias-label-tertiary);font-size:11px;letter-spacing:.04em}
-.ql-group-wrap{display:block;min-width:0}
-.ql-group{display:flex;flex-direction:column;
-  border:.5px solid var(--dsw-alias-border-l2);border-radius:10px;overflow:hidden;
-  background:color-mix(in srgb, var(--dsw-alias-bg-layer-3) 94%, var(--dsw-alias-label-primary) 6%)}
-.ql-srow{display:flex;align-items:center;justify-content:space-between;gap:14px;
-  min-height:38px;padding:9px 12px;min-width:0}
-.ql-srow + .ql-srow{border-top:.5px solid var(--dsw-alias-border-l2)}
-/* Settings rows arrive in sequence as the section mounts. This is a page a reader
-   opens occasionally, not an element they toggle repeatedly, so the entrance is
-   allowed to be noticed. */
-.ql-group .ql-srow{animation:ql-srow-in 300ms cubic-bezier(.23,1,.32,1) both;
-  animation-delay:calc(var(--ql-i,0) * 45ms + 200ms)}
-.ql-srow-k{flex:none;color:var(--dsw-alias-label-secondary);font-size:12.5px;
-  white-space:nowrap}
-
-/* The value column stacks under its label when the chips need the whole width.
-   A fixed right-aligned column squeezed five chips into two cramped rows. */
-.ql-srow.is-stacked{flex-direction:column;align-items:stretch;gap:7px}
-.ql-srow-v{flex:1;min-width:0;display:flex;justify-content:flex-end;
-  align-items:center;gap:6px;flex-wrap:wrap}
-.ql-srow.is-stacked .ql-srow-v{justify-content:flex-start;flex:0 0 auto}
-
-/* The readout at the top of the settings page reuses the panel's window row, so
-   the two places look like the same product. Only the entrance differs. */
-.ql-wins-grow{gap:16px;padding:11px 12px 10px}
-.ql-win.is-grow{gap:5px;animation:ql-srow-in 320ms cubic-bezier(.23,1,.32,1) both;
-  animation-delay:calc(var(--ql-i,0) * 70ms)}
-@keyframes ql-srow-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-
-.ql-srow-val{font-size:12px;line-height:1.3;font-variant-numeric:tabular-nums;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ql-srow-note{font-size:12px;line-height:1.3;color:var(--dsw-alias-label-tertiary);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-
-/* Credential state: a dot plus one short phrase, right-aligned. */
-.ql-state{display:inline-flex;align-items:center;gap:6px;max-width:100%;
-  color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:1.4}
-.ql-state::before{content:'';width:6px;height:6px;border-radius:50%;flex:none;
-  background:var(--dsw-alias-label-tertiary);opacity:.55;
-  transition:background-color 200ms cubic-bezier(.23,1,.32,1),opacity 200ms cubic-bezier(.23,1,.32,1)}
-.ql-state.is-on{color:var(--dsw-alias-state-business-primary)}
-.ql-state.is-on::before{background:currentColor;opacity:.95}
-.ql-state-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-
-/* The action area is its own stack: the primary action keeps a full row, then the
-   manual field gets one, then the footnote. Putting all three on one line is what
-   squeezed the input down to a sliver. */
-.ql-actions-row{display:flex;flex-direction:column;align-items:stretch;gap:8px;margin-top:10px}
-.ql-actions-row .ql-btns{display:flex;gap:8px;flex-wrap:wrap}
-.ql-actions-row .ql-field{display:flex;gap:8px;min-width:0}
-.ql-actions-row > .ql-btn{flex:none;white-space:nowrap;align-self:flex-start}
-
-/* Footnote and footer each get their own line, with breathing room above. */
-.ql-hint{margin-top:9px}
-.ql-foot{display:flex;align-items:center;gap:14px;margin-top:6px;padding-top:10px;
-  border-top:.5px solid var(--dsw-alias-border-l2)}
-.ql-foot .ql-btn.is-quiet{padding:0 10px}
-
-.ql-input{
-  flex:1;min-width:0;height:32px;padding:0 10px;box-sizing:border-box;
-  border:.5px solid var(--dsw-alias-border-l3);border-radius:8px;
-  background:color-mix(in srgb, var(--dsw-alias-bg-layer-3) 90%, var(--dsw-alias-label-primary) 10%);
-  color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;
-  transition:border-color 160ms cubic-bezier(.23,1,.32,1)
+.ql-settings{
+  --ql-surface:color-mix(in srgb, var(--dsw-alias-bg-layer-3) 96%, var(--dsw-alias-label-primary) 4%);
+  --ql-inset:color-mix(in srgb, var(--dsw-alias-bg-layer-3) 98%, var(--dsw-alias-label-primary) 2%);
+  --ql-border:var(--dsw-alias-border-l2);
+  --ql-text:var(--dsw-alias-label-primary);
+  --ql-muted:var(--dsw-alias-label-secondary);
+  --ql-accent:var(--dsw-alias-brand-primary);
+  display:grid;gap:12px;container-type:inline-size;padding:2px 0 8px;
+  color:var(--ql-text);font-size:13px;line-height:1.5;
+  animation:ql-settings-in 180ms cubic-bezier(.23,1,.32,1) both;
 }
-.ql-input::placeholder{color:var(--dsw-alias-label-tertiary)}
-.ql-input:focus{border-color:var(--dsw-alias-brand-primary);outline:none}
-.ql-input:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
-
-/* A footnote, one line where possible. */
-.ql-note{color:var(--dsw-alias-label-tertiary);font-size:11.5px;line-height:17px;margin:0}
-.ql-note.is-good{color:var(--dsw-alias-state-business-primary)}
-
-/* A primary action reads as branded; a quiet one steps back. */
-.ql-btn.is-primary{
-  border-color:var(--dsw-alias-brand-primary);
-  background:color-mix(in srgb, var(--dsw-alias-brand-primary) 16%, transparent);
-  color:var(--dsw-alias-label-primary);
+@keyframes ql-settings-in{from{opacity:0;transform:translateY(3px)}}
+.ql-settings-card{min-width:0;padding:14px;display:grid;gap:12px;
+  border:1px solid var(--ql-border);border-radius:12px;background:var(--ql-surface)}
+.ql-settings-head{display:flex;align-items:center;justify-content:space-between;gap:8px 12px;flex-wrap:wrap}
+.ql-settings-title{margin:0;font-size:14px;font-weight:650;line-height:1.4}
+.ql-settings-meta{display:flex;align-items:center;justify-content:flex-end;gap:6px 10px;flex-wrap:wrap}
+.ql-settings-caption,.ql-settings-note{margin:0;color:var(--ql-muted);font-size:12px;overflow-wrap:anywhere}
+.ql-settings-issue{margin:0;color:var(--dsw-alias-state-error-primary);font-size:12px;overflow-wrap:anywhere}
+.ql-settings-good{color:var(--dsw-alias-state-business-primary)}
+.ql-settings .ql-btn{height:auto;min-height:32px;padding:4px 11px;line-height:1.45}
+.ql-settings .ql-btn.is-primary{
+  border-color:var(--ql-accent);background:color-mix(in srgb, var(--ql-accent) 15%, transparent)
 }
-.ql-btn.is-primary:hover:not(:disabled){
-  background:color-mix(in srgb, var(--dsw-alias-brand-primary) 26%, transparent);
+.ql-settings .ql-btn.is-primary:hover:not(:disabled){background:color-mix(in srgb, var(--ql-accent) 25%, transparent)}
+.ql-settings .ql-btn.is-quiet{border-color:transparent;color:var(--ql-muted)}
+.ql-settings-refresh{min-width:6em}
+.ql-refresh-preference{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px 12px}
+.ql-refresh-preference select{min-height:30px;padding:3px 7px;border:1px solid var(--ql-border);border-radius:7px;
+  background:var(--ql-inset);color:var(--ql-text);font:inherit;font-size:12px}
+.ql-refresh-preference select:focus-visible{outline:2px solid var(--ql-accent);outline-offset:2px}
+.ql-history{display:grid;gap:0;margin:0;padding:0;list-style:none}
+.ql-history-columns,.ql-history li{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr) 6.6em;align-items:baseline;gap:6px 8px;min-width:0;font-size:12px}
+.ql-history-columns{color:var(--ql-muted);margin-bottom:-8px}
+.ql-history li{padding:4px 0}
+.ql-history li + li{border-top:1px solid var(--ql-border)}
+.ql-history-model,.ql-history-initiator{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ql-history-initiator,.ql-history time{color:var(--ql-muted)}
+.ql-history-visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.ql-history time,.ql-history-columns span:last-child{text-align:right;font-variant-numeric:tabular-nums}
+.ql-history-nav{display:flex;justify-content:flex-end;align-items:center;gap:8px;flex-wrap:wrap}
+.ql-history-nav .ql-btn{min-height:28px;padding:3px 8px}
+.ql-history-page{min-width:3em;text-align:center;font-variant-numeric:tabular-nums}
+.ql-settings-windows{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+.ql-settings .ql-win.is-grow{display:flex;gap:6px;padding:10px 12px;min-width:0;
+  border:1px solid var(--ql-border);border-radius:9px;background:var(--ql-inset);animation:none}
+.ql-settings .ql-win-name,.ql-settings .ql-win-meta{white-space:normal;overflow-wrap:anywhere}
+.ql-settings .ql-win-pct{font-size:17px}
+.ql-settings .ql-win-meta,.ql-settings .ql-outlook:not(.is-warn){color:var(--ql-muted)}
+.ql-settings-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,80px),1fr));gap:8px 12px;
+  margin:0;padding-top:10px;border-top:1px solid var(--ql-border)}
+.ql-settings-metrics.has-period{grid-template-columns:repeat(auto-fit,minmax(min(100%,112px),1fr))}
+.ql-settings-metric{min-width:0}
+.ql-settings-metric dt{font-size:11.5px;color:var(--ql-muted)}
+.ql-settings-metric dd{margin:1px 0 0;font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+
+.ql-preview{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px 12px;
+  min-height:44px;padding:5px 10px;box-sizing:border-box;
+  border:1px dashed var(--ql-border);border-radius:8px;background:var(--ql-inset)}
+.ql-preview-value{display:inline-flex;align-items:center;gap:6px;max-width:100%;min-height:26px;
+  padding:2px 9px;border:1px solid var(--ql-border);border-radius:999px;box-sizing:border-box}
+.ql-preview-value .ql-label{white-space:normal;overflow-wrap:anywhere;font-size:12px}
+.ql-preview-value .ql-label,.ql-preview-value .ql-ring,.ql-preview-value .ql-dot{animation:ql-preview-in 150ms ease-out both}
+@keyframes ql-preview-in{from{opacity:.35;transform:translateY(2px)}}
+.ql-setting-choice{display:flex;align-items:baseline;flex-wrap:wrap;gap:5px 12px;min-width:0}
+.ql-setting-choice-title{flex:0 0 5em;color:var(--ql-muted);font-size:12px}
+.ql-options{display:flex;flex:1 1 240px;flex-wrap:wrap;gap:5px 6px;min-width:0}
+.ql-option{position:relative;min-width:0;cursor:pointer}
+.ql-option input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
+.ql-option span{display:block;box-sizing:border-box;min-height:29px;padding:4px 9px;
+  border:1px solid var(--ql-border);border-radius:7px;color:var(--ql-muted);font-size:12px;
+  overflow-wrap:anywhere;
+  transition:background-color 140ms ease-out,border-color 140ms ease-out,color 140ms ease-out}
+.ql-option:hover span{background:var(--dsw-alias-interactive-bg-hover)}
+.ql-option input:checked + span{border-color:var(--ql-accent);color:var(--ql-text);
+  background:color-mix(in srgb, var(--ql-accent) 16%, transparent)}
+.ql-option input:focus-visible + span{outline:2px solid var(--ql-accent);outline-offset:2px}
+
+.ql-connection-state{display:flex;align-items:center;gap:6px;color:var(--ql-muted);font-size:12px}
+.ql-connection-state::before{content:'';flex:none;width:6px;height:6px;border-radius:50%;background:currentColor}
+.ql-connection-state.is-on{color:var(--dsw-alias-state-business-primary)}
+.ql-connection-actions,.ql-cookie-fields,.ql-connection-links{display:flex;align-items:center;flex-wrap:wrap;gap:7px 10px}
+.ql-settings-feedback:empty{display:none}
+.ql-settings-details{border-top:1px solid var(--ql-border);padding-top:8px;min-width:0}
+.ql-settings-details summary{width:fit-content;max-width:100%;padding:2px;color:var(--ql-muted);cursor:pointer}
+.ql-settings-details summary:focus-visible{outline:2px solid var(--ql-accent);outline-offset:2px;border-radius:3px}
+.ql-settings-details-body{display:grid;gap:8px;padding-top:7px;min-width:0;animation:ql-settings-in 160ms ease-out both}
+.ql-cookie-fields .ql-input{
+  flex:1 1 160px;min-width:0;min-height:32px;box-sizing:border-box;padding:4px 10px;
+  border:1px solid var(--ql-border);border-radius:7px;background:var(--ql-inset);color:var(--ql-text);font:inherit;
+  transition:border-color 140ms ease-out
 }
-.ql-btn.is-quiet{color:var(--dsw-alias-label-tertiary);border-color:transparent}
-.ql-btn.is-quiet:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
-.ql-field .ql-btn{height:32px;padding:0 14px}
-.ql-actions-row .ql-btn{height:32px;padding:0 14px}
+.ql-cookie-fields .ql-input::placeholder{color:var(--ql-muted)}
+.ql-cookie-fields .ql-input:focus-visible{outline:2px solid var(--ql-accent);outline-offset:1px}
+.ql-connection-links{justify-content:space-between;margin-top:2px}
+@container (min-width: 480px){.ql-settings-windows{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 /* ── reduced motion: one switch, everything off ───────────────────────── */
 @media (prefers-reduced-motion:reduce){
-  .ql-panel,.ql-panel > *,.ql-win,.ql-call,.ql-srow,.ql-group{animation:none}
-  .ql-bar-fill,.ql-bar-fill.is-grow,.ql-ring,.ql-ring-fill,.ql-pill,.ql-btn,.ql-mode,.ql-input{transition:none;animation:none}
-  .ql-bar-fill.is-grow{transform:scaleX(var(--ql-pct,1))}
-  .ql-pill:active,.ql-btn:active:not(:disabled),.ql-mode:active{transform:none}
+  .ql-panel,.ql-panel > *,.ql-win,.ql-call,.ql-settings,.ql-settings-details-body,
+  .ql-preview-value .ql-label,.ql-preview-value .ql-ring,.ql-preview-value .ql-dot{animation:none}
+  .ql-bar-fill,.ql-bar-fill.is-grow,.ql-ring,.ql-ring-fill,.ql-dot,.ql-pill,.ql-btn,
+  .ql-option span,.ql-cookie-fields .ql-input{transition:none;animation:none}
+  .ql-pill:active,.ql-btn:active:not(:disabled){transform:none}
 }`
 
     /** Money via Intl, so the grouping matches the reader's locale. */
@@ -406,6 +383,8 @@ window.__ModuleLoader__.load({
       hour: '2-digit',
       minute: '2-digit',
     })
+    const expiryFormat = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'long' })
+    const historyFormat = new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
     const clockFormat = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' })
 
     /** A short local timestamp, or null when the input is unusable. */
@@ -589,6 +568,7 @@ window.__ModuleLoader__.load({
 
     const PILL_MODE_KEY = 'opendesign-runway.pillMode'
     const INDICATOR_KEY = 'opendesign-runway.indicator'
+    const REFRESH_SECONDS_KEY = 'opendesign-runway.refreshSeconds'
 
     /**
      * Carry a stored mode from an older build forward.
@@ -644,6 +624,7 @@ window.__ModuleLoader__.load({
       let state = {
         mode: readStoredMode(),
         indicator: readStored(INDICATOR_KEY, INDICATOR_MODES, 'ring'),
+        refreshSeconds: readStored(REFRESH_SECONDS_KEY, REFRESH_OPTIONS, String(DEFAULT_REFRESH_SECONDS)),
       }
       const listeners = new Set()
       return {
@@ -658,6 +639,7 @@ window.__ModuleLoader__.load({
           state = { ...state, ...patch }
           if (Object.hasOwn(patch, 'mode')) writeStored(PILL_MODE_KEY, state.mode)
           if (Object.hasOwn(patch, 'indicator')) writeStored(INDICATOR_KEY, state.indicator)
+          if (Object.hasOwn(patch, 'refreshSeconds')) writeStored(REFRESH_SECONDS_KEY, state.refreshSeconds)
           for (const listener of listeners) listener()
         },
       }
@@ -713,7 +695,7 @@ window.__ModuleLoader__.load({
         const parts = [pair.short, pair.long]
           .filter((entry) => entry !== null)
           .map((entry) => `${shortCode(entry)} ${Math.round(entry.remainingPct)}%`)
-        if (parts.length > 0) return parts.join(' · ')
+        if (parts.length > 0) return parts.join(' • ')
         // No measured window: fall through so a wallet figure still shows.
       }
       if (mode === 'hour' || mode === 'day') {
@@ -807,51 +789,36 @@ window.__ModuleLoader__.load({
       ])
     }
 
-    /**
-     * What the window's own burn rate implies, phrased as one line.
-     *
-     * Answers the question a plan user actually has — will this run out before it
-     * resets — using the rate measured from the window's own anchor, so the answer
-     * does not depend on how long this page has been open.
-     *
-     * Only the long cycle gets this line. A 5-hour window resets before any
-     * meaningful trend forms, so a prediction there would be noise dressed as
-     * insight: the short window's job is to show its percentage and move on.
-     * @param {object} entry a window from the reading
-     * @returns {{ text: string, tone: 'ok' | 'warn' } | null}
-     */
-    function outlookLine(entry) {
+    /** Estimate from the quota window's own anchor and the time its usage was sampled. */
+    function outlookLine(entry, sampledAt = Date.now()) {
       const seconds = Number(entry?.durationSeconds)
-      // Under a day: no forecast. The number would be recalculated from a
-      // handful of minutes of history and read as more certain than it is.
-      if (!Number.isFinite(seconds) || seconds < 86_400) return null
-
-      const hours = seconds / 3_600
       const credits = entry?.credits ?? {}
+      if (credits.used == null || credits.remaining == null) return null
       const used = Number(credits.used)
       const remaining = Number(credits.remaining)
-      const resetMs = Date.parse(entry?.resetAt ?? '')
-      const startMs = Date.parse(entry?.windowStart ?? '')
-      if (!Number.isFinite(used) || !Number.isFinite(remaining) || !Number.isFinite(resetMs)) return null
-
+      const resetAt = Date.parse(entry?.resetAt ?? '')
       const now = Date.now()
-      const hoursToReset = (resetMs - now) / 3_600_000
-      if (!Number.isFinite(hoursToReset) || hoursToReset <= 0) return null
-
-      const anchorMs = Number.isFinite(startMs) ? startMs : resetMs - hours * 3_600_000
-      const elapsedHours = (now - anchorMs) / 3_600_000
-      if (!Number.isFinite(elapsedHours) || elapsedHours <= 0) return null
-
+      if (!Number.isFinite(resetAt) || resetAt <= now || !Number.isFinite(used) || !Number.isFinite(remaining)) return null
+      if (used < 0 || remaining < 0) return null
+      if (remaining === 0) return { text: '当前额度已耗尽', tone: 'warn' }
       if (used === 0) return { text: '还没开始消耗', tone: 'ok' }
-      const perHour = used / elapsedHours
-      if (!Number.isFinite(perHour) || perHour <= 0) return null
-      const hoursToExhaust = remaining / perHour
 
-      const compact = (value) => (value < 1 ? '不到 1 小时' : `约 ${Math.round(value)} 小时`)
-      if (hoursToExhaust < hoursToReset) {
-        return { text: `照此速度 ${compact(hoursToExhaust)}后耗尽`, tone: 'warn' }
+      const startAt = Date.parse(entry?.windowStart ?? '')
+      const anchor = Number.isFinite(startAt) ? startAt : resetAt - seconds * 1000
+      const sampleTime = Number.isFinite(sampledAt) ? Math.min(sampledAt, now) : now
+      const elapsed = sampleTime - anchor
+      if (!Number.isFinite(elapsed) || elapsed <= 0) return null
+      if (seconds > 0 && seconds < 86_400 && elapsed < 5 * 60_000) {
+        return { text: '窗口刚开始，积累几分钟后再估算', tone: 'ok' }
       }
-      return { text: '照此速度能撑到重置', tone: 'ok' }
+      const exhaustAt = sampleTime + remaining * elapsed / used
+      if (exhaustAt >= resetAt) return { text: '照此速度能撑到重置', tone: 'ok' }
+      const minutes = (exhaustAt - now) / 60_000
+      if (minutes <= 0) return { text: '按上次读数估计，预计耗尽时间已过', tone: 'warn' }
+      const eta = minutes < 1 ? '不到 1 分钟' : minutes < 60
+        ? `约 ${Math.round(minutes)} 分钟`
+        : `约 ${Math.round(minutes / 60)} 小时`
+      return { text: `照此速度，${eta}后耗尽`, tone: 'warn' }
     }
 
     /**
@@ -866,7 +833,7 @@ window.__ModuleLoader__.load({
      * supporting detail; giving each its own row doubled the panel's height for
      * numbers that belong together.
      */
-    function WindowRow({ entry, index, grow = false }) {
+    function WindowRow({ entry, index, sampledAt, grow = false }) {
       const pct = typeof entry.remainingPct === 'number' ? entry.remainingPct : null
       const remainingHours = hoursUntil(entry.resetAt)
       // "3 小时后重置" answers when, but not what the reader actually wants to
@@ -887,7 +854,7 @@ window.__ModuleLoader__.load({
         ? `${count(credits.remaining)} / ${count(credits.limit)}`
         : null
       const meta = [creditText, resetText].filter((part) => part !== null).join(' · ')
-      const outlook = outlookLine(entry)
+      const outlook = outlookLine(entry, sampledAt)
       const resetTitle = remainingHours !== null && remainingHours >= 0
         ? `重置于 ${when(entry.resetAt) ?? ''}`
         : ''
@@ -959,15 +926,50 @@ window.__ModuleLoader__.load({
       }
     }
 
-    /** Persist the last good snapshot; a storage failure is not worth surfacing. */
+    /** Persist the last good snapshot for the conversation pill. */
     function writeCachedSnapshot(body) {
+      const { reading } = body
+      const usage = reading?.usage
+      const cachedBody = Array.isArray(usage?.recent) ? {
+        ...body,
+        reading: { ...reading, usage: { ...usage, recent: usage.recent.map(({ model, at }) => ({ model, at })) } },
+      } : body
       try {
         window.localStorage.setItem(SNAPSHOT_CACHE_KEY, JSON.stringify({
           provider: 'opendesign',
           at: Date.now(),
-          body,
+          body: cachedBody,
         }))
       } catch {}
+    }
+
+    function snapshotPath(force, seconds) {
+      return `${PATHS.snapshot}?interval=${seconds}${force ? '&refresh=1' : ''}`
+    }
+
+    function pollSnapshot(read, intervalMs) {
+      let stopped = false
+      let timer
+      async function tick() {
+        await read()
+        if (!stopped) timer = setTimeout(tick, intervalMs)
+      }
+      void tick()
+      return () => {
+        stopped = true
+        clearTimeout(timer)
+      }
+    }
+
+    function planEndOf(reading) {
+      const raw = reading?.billing?.periodEnd ?? reading?.periodEnd
+      const value = Date.parse(raw ?? '')
+      if (!Number.isFinite(value)) return null
+      return {
+        label: reading.billing?.cancelAtPeriodEnd ? '套餐到期日' : '套餐周期结束',
+        date: expiryFormat.format(value),
+        title: when(value),
+      }
     }
 
     /** The pill and its detail panel. */
@@ -979,13 +981,13 @@ window.__ModuleLoader__.load({
       const [open, setOpen] = React.useState(false)
       const [busy, setBusy] = React.useState(false)
       const [error, setError] = React.useState(null)
-      const { mode, indicator } = usePrefs()
+      const { mode, indicator, refreshSeconds } = usePrefs()
       const anchor = React.useRef(null)
 
       const load = React.useCallback(async (refresh) => {
         if (provider === null) return
         try {
-          const result = await call(`${PATHS.snapshot}${refresh ? '?refresh=1' : ''}`)
+          const result = await call(snapshotPath(refresh, refreshSeconds))
           if (result.body) {
             setSnapshot(result.body)
             setStale(false)
@@ -996,16 +998,14 @@ window.__ModuleLoader__.load({
         } catch (cause) {
           setError(cause instanceof Error ? cause.message : String(cause))
         }
-      }, [provider])
+      }, [provider, refreshSeconds])
 
       React.useEffect(() => {
         if (provider === null) return undefined
-        void load(false)
-        const timer = setInterval(() => {
-          if (typeof document === 'undefined' || document.visibilityState === 'visible') void load(false)
-        }, POLL_MS)
-        return () => clearInterval(timer)
-      }, [provider, load])
+        return pollSnapshot(() => {
+          if (document.visibilityState === 'visible') return load(false)
+        }, Number(refreshSeconds) * 1000)
+      }, [provider, load, refreshSeconds])
 
       React.useEffect(() => {
         if (!open) return undefined
@@ -1036,13 +1036,10 @@ window.__ModuleLoader__.load({
       const windows = Array.isArray(reading?.windows) ? reading.windows : []
       const usage = reading?.usage ?? null
       const billing = reading?.billing ?? null
+      const planEnd = planEndOf(reading)
       const amount = reading?.money?.amount
       const text = pillText(snapshot, mode)
-      // The ring mirrors the text: it shows the cycle the pill names, so a
-      // "仅 7d" pill never draws a 5-hour arc.
-      const pair = cyclePair(windows)
-      const ringSource = mode === 'hour' || mode === 'day' ? cycleFor(mode, pair) : null
-      const pct = ringSource !== null ? ringSource.remainingPct : worstPct(windows)
+      const pct = pillPercent(windows, mode)
       // Both controls off means the pill would be an empty box with no text, no
       // indicator, and no reason to click. Nothing is rendered at all.
       if (indicator === 'none' && text === '') return null
@@ -1087,7 +1084,7 @@ window.__ModuleLoader__.load({
 
           windows.length > 0
             ? h('div', { key: 'wins', className: 'ql-wins' },
-              windows.map((entry, index) => h(WindowRow, { key: entry.key, entry, index })))
+              windows.map((entry, index) => h(WindowRow, { key: entry.key, entry, index, sampledAt: reading.queriedAt })))
             : h('span', { key: 'nowins', className: 'ql-sub' },
               reading?.message ?? '这个账号当前没有套餐窗口。'),
 
@@ -1118,7 +1115,7 @@ window.__ModuleLoader__.load({
               ? h('div', { key: 'calls', className: 'ql-calls' }, [
                 h('span', { key: 'cap', className: 'ql-calls-cap' }, '最近两次调用'),
                 h('div', { key: 'recent', className: 'ql-recent' },
-                  usage.recent.map((row, index) => h('div', {
+                  usage.recent.slice(0, 2).map((row, index) => h('div', {
                     key: `${row.at}-${index}`,
                     className: 'ql-call',
                     style: { '--ql-i': index },
@@ -1136,14 +1133,14 @@ window.__ModuleLoader__.load({
 
           reading?.usageError ? h('p', { key: 'uerr', className: 'ql-err' }, reading.usageError) : null,
 
-          billing !== null && (billing.periodEnd !== null || billing.status !== null)
+          (planEnd !== null || billing?.status != null)
             ? h('div', { key: 'billing', className: 'ql-tail' }, [
               h('div', { key: 'sep', className: 'ql-sep' }),
-              billing.status !== null
+              billing?.status != null
                 ? h(Row, { key: 'st', label: '订阅', value: billing.cancelAtPeriodEnd ? `${billing.status} · 到期取消` : billing.status })
                 : null,
-              billing.periodEnd !== null
-                ? h(Row, { key: 'end', label: '周期结束', value: when(billing.periodEnd) ?? billing.periodEnd })
+              planEnd !== null
+                ? h(Row, { key: 'end', label: planEnd.label, value: planEnd.date })
                 : null,
             ]) : null,
 
@@ -1169,64 +1166,145 @@ window.__ModuleLoader__.load({
       ])
     }
 
-    /** The settings section: live readout, display choices, credentials. */
+    /** Use the same indicator source in the conversation and its settings preview. */
+    function pillPercent(windows, mode) {
+      const selected = mode === 'hour' || mode === 'day' ? cycleFor(mode, cyclePair(windows)) : null
+      return selected === null ? worstPct(windows) : selected.remainingPct
+    }
+
+    function DisplayChoice({ label, options, value, describe, onChange }) {
+      const id = React.useId()
+      return h('div', { className: 'ql-setting-choice' }, [
+        h('span', { key: 'title', id, className: 'ql-setting-choice-title' }, label),
+        h('div', { key: 'options', className: 'ql-options', role: 'radiogroup', 'aria-labelledby': id },
+          options.map((option) => h('label', { key: option, className: 'ql-option' }, [
+            h('input', {
+              key: 'radio', type: 'radio', name: id, value: option, checked: value === option,
+              onChange: () => onChange(option),
+            }),
+            h('span', { key: 'label' }, describe(option)),
+          ]))),
+      ])
+    }
+
+    function RecentCalls({ rows, emptyMessage, issue }) {
+      const [page, setPage] = React.useState(0)
+      const entries = rows.slice(0, RECENT_CALLS_LIMIT)
+      const pages = Math.max(1, Math.ceil(entries.length / CALLS_PER_PAGE))
+      const currentPage = Math.min(page, pages - 1)
+      if (page !== currentPage) setPage(currentPage)
+      const start = currentPage * CALLS_PER_PAGE
+      return h('section', { className: 'ql-settings-card', 'aria-label': '最近调用' }, [
+        h('div', { key: 'head', className: 'ql-settings-head' }, [
+          h('h3', { key: 'title', className: 'ql-settings-title' }, '最近调用'),
+          entries.length > 0 ? h('span', { key: 'count', className: 'ql-settings-caption' }, `最近 ${entries.length} 条`) : null,
+        ]),
+        entries.length > 0 ? h('div', { key: 'columns', className: 'ql-history-columns', 'aria-hidden': true }, [
+          h('span', { key: 'model' }, '模型'),
+          h('span', { key: 'initiator' }, '调用者'),
+          h('span', { key: 'time' }, '时间'),
+        ]) : null,
+        entries.length > 0 ? h('ul', { key: 'rows', className: 'ql-history' },
+          entries.slice(start, start + CALLS_PER_PAGE).map((row, index) => {
+            const at = Date.parse(row.at)
+            const initiator = row.initiator || '未知'
+            return h('li', { key: `${row.at}-${start + index}` }, [
+              h('span', { key: 'model', className: 'ql-history-model', title: row.model }, row.model),
+              h('span', { key: 'initiator', className: 'ql-history-initiator', title: initiator }, [
+                h('span', { key: 'label', className: 'ql-history-visually-hidden' }, '调用者 '),
+                initiator,
+              ]),
+              Number.isFinite(at) ? h('time', { key: 'time', dateTime: row.at, title: when(at) }, historyFormat.format(at)) : null,
+            ])
+          })) : h('p', { key: 'empty', className: 'ql-settings-note' }, emptyMessage),
+        issue ? h('p', { key: 'issue', className: 'ql-settings-issue' }, issue) : null,
+        pages > 1 ? h('nav', { key: 'pages', className: 'ql-history-nav', 'aria-label': '调用记录分页' }, [
+          h('button', { key: 'prev', type: 'button', className: 'ql-btn', disabled: currentPage === 0,
+            onClick: () => setPage(currentPage - 1) }, '上一页'),
+          h('span', { key: 'page', className: 'ql-settings-caption ql-history-page', 'aria-live': 'polite',
+            'aria-label': `第 ${currentPage + 1} 页，共 ${pages} 页` }, `${currentPage + 1} / ${pages}`),
+          h('button', { key: 'next', type: 'button', className: 'ql-btn', disabled: currentPage === pages - 1,
+            onClick: () => setPage(currentPage + 1) }, '下一页'),
+        ]) : null,
+      ])
+    }
+
     function SettingsSection() {
-      const { mode, indicator } = usePrefs()
+      const { mode, indicator, refreshSeconds } = usePrefs()
+      const cookieHintId = React.useId()
       const [snapshot, setSnapshot] = React.useState(null)
+      const [refreshError, setRefreshError] = React.useState(null)
+      const [refreshing, setRefreshing] = React.useState(false)
       const [draft, setDraft] = React.useState('')
       const [busy, setBusy] = React.useState(false)
       const [message, setMessage] = React.useState(null)
+      const requestId = React.useRef(0)
+      const manualRefresh = React.useRef(false)
 
-      const refresh = React.useCallback(async () => {
-        try {
-          const result = await call(PATHS.snapshot)
-          if (result.body) setSnapshot(result.body)
-        } catch {
-          setSnapshot(null)
+      const refresh = React.useCallback(async (force = false) => {
+        if (manualRefresh.current) return
+        if (force) {
+          manualRefresh.current = true
+          setRefreshing(true)
         }
-      }, [])
+        const id = ++requestId.current
+        try {
+          const result = await call(snapshotPath(force, refreshSeconds))
+          if (!result.ok || !result.body?.reading) throw new Error(`无法读取额度（HTTP ${result.status}）。`)
+          if (id === requestId.current) {
+            setSnapshot(result.body)
+            setRefreshError(null)
+          }
+        } catch (error) {
+          if (id === requestId.current) setRefreshError(error instanceof TypeError ? '无法连接 DSH。' : '暂时无法读取额度。')
+        } finally {
+          if (force) {
+            manualRefresh.current = false
+            setRefreshing(false)
+          }
+        }
+      }, [refreshSeconds])
 
-      // Fast polling exists to notice a sign-in completing in another window. The
-      // reading does not need that cadence, so the cycle stays slow and speeds up
-      // only while a login is actually in flight.
-      const pending = snapshot?.login?.state === 'starting' || snapshot?.login?.state === 'pending'
-      React.useEffect(() => {
-        void refresh()
-        const timer = setInterval(
-          () => { void refresh() },
-          pending ? LOGIN_POLL_MS : POLL_MS,
-        )
-        return () => clearInterval(timer)
-      }, [refresh, pending])
+      const login = snapshot?.login ?? { state: 'idle' }
+      const running = login.state === 'starting' || login.state === 'pending'
+      React.useEffect(() => pollSnapshot(refresh, running ? LOGIN_POLL_MS : Number(refreshSeconds) * 1000),
+        [refresh, running, refreshSeconds])
 
       async function signIn() {
         setBusy(true)
         setMessage(null)
         try {
           const result = await call(PATHS.login, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
-          if (result.body?.availability?.available === false) {
+          if (!result.ok || !result.body?.status) throw new Error()
+          if (result.body.availability?.available === false) {
             setMessage({ kind: 'bad', text: result.body.availability.reason })
-          } else {
-            setMessage({ kind: 'ok', text: '登录窗口已打开，请在里面完成登录。' })
           }
-          void refresh()
+          await refresh()
         } catch {
-          setMessage({ kind: 'bad', text: '宿主路由不可达。' })
+          setMessage({ kind: 'bad', text: '无法启动登录窗口。' })
         } finally {
           setBusy(false)
         }
       }
 
       async function cancel() {
+        setBusy(true)
+        setMessage(null)
         try {
-          await call(PATHS.login, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ cancel: true }) })
-        } catch {}
-        void refresh()
+          const result = await call(PATHS.login, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ cancel: true }) })
+          if (!result.ok || !result.body?.cancelled) throw new Error()
+          await refresh()
+        } catch {
+          setMessage({ kind: 'bad', text: '无法取消登录。' })
+        } finally {
+          setBusy(false)
+        }
       }
 
-      async function bind() {
+      async function bind(event) {
+        event.preventDefault()
         const value = draft.trim()
-        if (value === '') return
+        if (value === '' || busy || running || refreshing) return
         setBusy(true)
         setMessage(null)
         try {
@@ -1235,15 +1313,15 @@ window.__ModuleLoader__.load({
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ cookie: value }),
           })
-          if (result.body?.ok) {
+          if (result.ok && result.body?.ok) {
             setDraft('')
-            setMessage({ kind: 'ok', text: '已保存并通过验证。' })
-            void refresh()
+            setMessage({ kind: 'ok', text: 'Cookie 已保存并通过验证。' })
+            await refresh()
           } else {
-            setMessage({ kind: 'bad', text: result.body?.message ?? `HTTP ${result.status}` })
+            setMessage({ kind: 'bad', text: result.body?.message ?? `无法保存 Cookie（HTTP ${result.status}）。` })
           }
         } catch {
-          setMessage({ kind: 'bad', text: '宿主路由不可达。' })
+          setMessage({ kind: 'bad', text: '无法连接 DSH。' })
         } finally {
           setBusy(false)
         }
@@ -1253,195 +1331,162 @@ window.__ModuleLoader__.load({
         setBusy(true)
         setMessage(null)
         try {
-          await call(PATHS.logout, { method: 'POST' })
-          setMessage({ kind: 'ok', text: '已清除本机凭据。' })
-          void refresh()
+          const result = await call(PATHS.logout, { method: 'POST' })
+          if (!result.ok || !result.body?.ok) throw new Error()
+          setMessage({ kind: 'ok', text: '已清除本机浏览器会话。' })
+          await refresh()
         } catch {
-          setMessage({ kind: 'bad', text: '宿主路由不可达。' })
+          setMessage({ kind: 'bad', text: '无法清除本机浏览器会话。' })
         } finally {
           setBusy(false)
         }
       }
 
-      const login = snapshot?.login ?? { state: 'idle' }
-      const session = snapshot?.session ?? { set: false, tail: '' }
-      const controlKey = snapshot?.controlKey ?? { set: false, tail: '', path: '', reason: null }
-      const running = login.state === 'starting' || login.state === 'pending'
-      // Window labels come from the live reading, so the chips name the account's
-      // real cycles instead of assuming 5h/7d.
-      const windows = Array.isArray(snapshot?.reading?.windows) ? snapshot.reading.windows : []
-
-      // The readout at the top: someone who hid the pill entirely still opens this
-      // page, and owes themselves the numbers rather than only the switches.
-      const reading = snapshot?.reading ?? null
+      const session = snapshot?.session
+      const controlKey = snapshot?.controlKey
+      const availability = snapshot?.availability
+      const loginUnavailable = availability?.available === false
+      const loginFeedback = message?.text ?? (loginUnavailable ? null : login.message)
+      const loginTone = message?.kind ?? (login.state === 'failed' ? 'bad' : login.state === 'success' ? 'ok' : null)
+      const reading = snapshot?.reading
       const healthy = reading?.status === 'ok'
-      const walletAmount = healthy && typeof reading?.money?.amount === 'number' ? reading.money.amount : null
-      const usage = healthy ? (reading?.usage ?? null) : null
-      const tokensToday = usage !== null && usage.today !== undefined
-        ? (usage.today.input ?? 0) + (usage.today.output ?? 0)
-        : null
-      // The reading's own timestamp, not the snapshot's: a cached reading keeps
-      // its original time, and `asOf` is when the page asked — which would always
-      // read "just now" even for numbers an hour old.
-      const readAtIso = typeof reading?.queriedAt === 'number'
-        ? new Date(reading.queriedAt).toISOString()
-        : (typeof snapshot?.asOf === 'number' ? new Date(snapshot.asOf).toISOString() : null)
-      const readAt = readAtIso === null ? null : relativeTime(readAtIso)
+      const windows = Array.isArray(reading?.windows) ? reading.windows : []
+      const today = healthy ? reading.usage?.today : null
+      const wallet = healthy ? reading.money : null
+      const planEnd = healthy ? planEndOf(reading) : null
+      const recent = healthy && Array.isArray(reading.usage?.recent) ? reading.usage.recent : []
+      const historyEmpty = !reading ? (refreshError ? '暂时无法读取调用记录。' : '正在读取调用记录…')
+        : !session?.set ? '连接 OpenDesign 浏览器会话后可查看调用记录。'
+        : reading.usageError || !healthy ? '暂时无法读取调用记录。' : '暂无调用记录。'
+      const metrics = [
+        ['套餐', reading?.tier ? String(reading.tier).toUpperCase() : null],
+        ['钱包余额', typeof wallet?.amount === 'number' ? money(wallet.amount, wallet.currency ?? 'USD') : null],
+        ['今日 Token', today ? compactTokens((today.input ?? 0) + (today.output ?? 0)) : null],
+        [planEnd?.label ?? '套餐周期结束', planEnd?.date ?? (windows.length > 0 ? '暂未提供' : null), planEnd?.title],
+      ].filter(([, value]) => value !== null)
+      // Cached snapshots keep the original reading's timestamp across polls.
+      const readAt = reading?.queriedAt ?? snapshot?.asOf
+      const readTime = healthy && Number.isFinite(readAt) ? new Date(readAt) : null
+      const readAtIso = readTime?.toISOString()
+      const previewText = pillText(snapshot, mode)
+      const previewPct = pillPercent(windows, mode)
+      const hidden = indicator === 'none' && previewText === ''
+      const credentialBusy = busy || running || refreshing
 
       return h('div', { className: 'ql-settings' }, [
-        // Numbers first: a page whose only content is switches tells a reader
-        // nothing about their account.
-        h('section', { key: 'now', className: 'ql-group-wrap' }, [
-          h('span', { key: 'cap', className: 'ql-group-cap' }, '当前'),
-          healthy
-            ? h('div', { key: 'g', className: 'ql-group' }, [
-              windows.length > 0
-                ? h('div', { key: 'wins', className: 'ql-wins ql-wins-grow' },
-                  windows.map((entry, index) => h(WindowRow, { key: entry.key, entry, index, grow: true })))
-                : null,
-              h('div', { key: 'tier', className: 'ql-srow', style: { '--ql-i': 2 } }, [
-                h('span', { key: 'k', className: 'ql-srow-k' }, '套餐'),
-                h('div', { key: 'v', className: 'ql-srow-v' },
-                  h('span', { key: 't', className: 'ql-srow-val' }, String(reading.tier ?? '—').toUpperCase())),
-              ]),
-              walletAmount === null ? null : h('div', { key: 'wallet', className: 'ql-srow', style: { '--ql-i': 3 } }, [
-                h('span', { key: 'k', className: 'ql-srow-k' }, '钱包余额'),
-                h('div', { key: 'v', className: 'ql-srow-v' },
-                  h('span', { key: 't', className: 'ql-srow-val' }, money(walletAmount, reading.money.currency ?? 'USD'))),
-              ]),
-              tokensToday === null ? null : h('div', { key: 'tok', className: 'ql-srow', style: { '--ql-i': 4 } }, [
-                h('span', { key: 'k', className: 'ql-srow-k' }, '今日 token'),
-                h('div', { key: 'v', className: 'ql-srow-v' },
-                  h('span', { key: 't', className: 'ql-srow-val' }, compactTokens(tokensToday))),
-              ]),
-              readAt === null ? null : h('div', { key: 'at', className: 'ql-srow', style: { '--ql-i': 5 } }, [
-                h('span', { key: 'k', className: 'ql-srow-k' }, '更新于'),
-                h('div', { key: 'v', className: 'ql-srow-v' },
-                  h('span', { key: 't', className: 'ql-srow-note' }, readAt)),
-              ]),
-            ])
-            : h('div', { key: 'g', className: 'ql-group' }, h('div', { className: 'ql-srow' }, [
-              h('span', { key: 'k', className: 'ql-srow-k' }, '读数'),
-              h('div', { key: 'v', className: 'ql-srow-v' },
-                h('span', { key: 't', className: 'ql-srow-note' },
-                  reading === null ? '读取中…' : (reading.message ?? '暂时读不到额度。'))),
-            ])),
-        ]),
-
-        // Display: the two choices this page exists for.
-        h('section', { key: 'display', className: 'ql-group-wrap' }, [
-          h('span', { key: 'cap', className: 'ql-group-cap' }, '显示'),
-          h('div', { key: 'g', className: 'ql-group' }, [
-            h('div', { key: 'mode', className: 'ql-srow is-stacked' }, [
-              h('span', { key: 'k', className: 'ql-srow-k' }, '胶囊文字'),
-              h('div', { key: 'v', className: 'ql-srow-v' },
-                h('div', { key: 'g', className: 'ql-modes', role: 'radiogroup', 'aria-label': '胶囊文字' },
-                  PILL_MODES.map((option) => h('button', {
-                    key: option,
-                    type: 'button',
-                    role: 'radio',
-                    'aria-checked': mode === option ? 'true' : 'false',
-                    className: mode === option ? 'ql-mode is-on' : 'ql-mode',
-                    onClick: () => prefs.set({ mode: option }),
-                  }, pillModeLabel(option, windows))))),
-            ]),
-            h('div', { key: 'ind', className: 'ql-srow is-stacked' }, [
-              h('span', { key: 'k', className: 'ql-srow-k' }, '状态指示'),
-              h('div', { key: 'v', className: 'ql-srow-v' },
-                h('div', { key: 'g', className: 'ql-modes', role: 'radiogroup', 'aria-label': '状态指示' },
-                  INDICATOR_MODES.map((option) => h('button', {
-                    key: option,
-                    type: 'button',
-                    role: 'radio',
-                    'aria-checked': indicator === option ? 'true' : 'false',
-                    className: indicator === option ? 'ql-mode is-on' : 'ql-mode',
-                    onClick: () => prefs.set({ indicator: option }),
-                  }, INDICATOR_LABEL[option])))),
-            ]),
-          ]),
-        ]),
-
-        // Credentials: state on the right, actions below.
-        h('section', { key: 'cred', className: 'ql-group-wrap' }, [
-          h('span', { key: 'cap', className: 'ql-group-cap' }, '凭据'),
-          h('div', { key: 'g', className: 'ql-group' }, [
-            h('div', { key: 'sess', className: 'ql-srow', style: { '--ql-i': 0 } }, [
-              h('span', { key: 'k', className: 'ql-srow-k' }, '浏览器会话'),
-              h('div', { key: 'v', className: 'ql-srow-v' },
-                h('span', { className: session.set ? 'ql-state is-on' : 'ql-state' }, [
-                  h('span', { key: 't', className: 'ql-state-text' },
-                    session.set ? `已保存 · ${session.tail}` : '未保存'),
-                ])),
-            ]),
-            h('div', { key: 'ck', className: 'ql-srow', style: { '--ql-i': 1 } }, [
-              h('span', { key: 'k', className: 'ql-srow-k' }, 'controlKey'),
-              h('div', { key: 'v', className: 'ql-srow-v' },
-                h('span', {
-                  className: controlKey.set ? 'ql-state is-on' : 'ql-state',
-                  title: controlKey.path,
-                }, [
-                  h('span', { key: 't', className: 'ql-state-text' },
-                    controlKey.set ? `已找到 · ${controlKey.tail}` : (controlKey.reason ?? '未找到')),
-                ])),
-            ]),
-          ]),
-
-          login.message ? h('p', { key: 'lm', className: 'ql-note', 'aria-live': 'polite' }, login.message) : null,
-
-          h('div', { key: 'actions', className: 'ql-actions-row' }, [
-            h('div', { key: 'btns', className: 'ql-btns' }, [
+        h('section', { key: 'overview', className: 'ql-settings-card', 'aria-label': '额度概览' }, [
+          h('div', { key: 'head', className: 'ql-settings-head' }, [
+            h('h3', { key: 'title', className: 'ql-settings-title' }, '额度概览'),
+            h('div', { key: 'meta', className: 'ql-settings-meta' }, [
+              readTime ? h('time', {
+                key: 'time', className: 'ql-settings-caption', dateTime: readAtIso, title: readTime.toLocaleString(),
+              }, `更新于 ${relativeTime(readAtIso)}`) : null,
               h('button', {
-                key: 'in',
-                type: 'button',
-                className: 'ql-btn is-primary',
-                disabled: busy || running,
-                onClick: signIn,
-              }, running ? '登录中…' : '登录 OpenDesign…'),
-              running ? h('button', {
-                key: 'c',
-                type: 'button',
-                className: 'ql-btn',
-                onClick: cancel,
-              }, '取消') : null,
-            ]),
-            h('div', { key: 'manual', className: 'ql-field' }, [
-              h('input', {
-                key: 'f',
-                className: 'ql-input',
-                type: 'password',
-                name: 'opendesign-cookie',
-                value: draft,
-                placeholder: '粘贴 Cookie…',
-                autoComplete: 'off',
-                spellCheck: false,
-                'aria-label': 'OpenDesign Cookie',
-                onChange: (event) => setDraft(event.target.value),
-              }),
-              h('button', {
-                key: 'b',
-                type: 'button',
-                className: 'ql-btn',
-                disabled: busy || draft.trim() === '',
-                onClick: bind,
-              }, '保存'),
+                key: 'refresh', type: 'button', className: 'ql-btn ql-settings-refresh',
+                disabled: refreshing || busy || running, onClick: () => { void refresh(true) },
+              }, refreshing ? '刷新中…' : '刷新额度'),
             ]),
           ]),
-
-          h('p', { key: 'hint', className: 'ql-note ql-hint' },
-            '登录页有 Turnstile，无法自动提交。用上面的按钮在临时窗口登录，或从浏览器复制整条 Cookie 头粘贴。'
-            + ' 浏览器会话能读套餐窗口，controlKey 只能读钱包余额。'),
+          refreshError ? h('p', { key: 'error', className: 'ql-settings-issue', role: 'status' },
+            healthy ? `${refreshError} 当前显示上次读数。` : refreshError) : null,
+          healthy ? [
+            windows.length > 0 ? h('div', { key: 'windows', className: 'ql-settings-windows' },
+              windows.map((entry, index) => h(WindowRow, { key: entry.key, entry, index, sampledAt: reading.queriedAt, grow: true })))
+              : h('p', { key: 'no-windows', className: 'ql-settings-note' },
+                reading.channel === 'control' ? '当前来源仅提供钱包余额。' : '当前没有可显示的套餐窗口。'),
+            metrics.length > 0 ? h('dl', { key: 'metrics', className: planEnd ? 'ql-settings-metrics has-period' : 'ql-settings-metrics' },
+              metrics.map(([label, value, title]) => h('div', { key: label, className: 'ql-settings-metric' }, [
+                h('dt', { key: 'label' }, label), h('dd', { key: 'value', title }, value),
+              ]))) : null,
+          ] : (!refreshError ? h('p', { key: 'status', className: 'ql-settings-note', role: 'status' },
+            reading ? (reading.message ?? '暂时读不到额度。') : '正在读取额度…') : null),
+          h('label', { key: 'interval', className: 'ql-refresh-preference' }, [
+            h('span', { key: 'label', className: 'ql-settings-caption' }, '自动刷新间隔'),
+            h('select', { key: 'select', value: refreshSeconds,
+              onChange: (event) => prefs.set({ refreshSeconds: event.target.value }) },
+            REFRESH_OPTIONS.map((seconds) => h('option', { key: seconds, value: seconds }, `${Number(seconds) / 60} 分钟`))),
+          ]),
         ]),
 
-        h('div', { key: 'foot', className: 'ql-foot' }, [
-          h('a', { key: 'a', className: 'ql-link', href: DASHBOARD, target: '_blank', rel: 'noreferrer' }, '打开控制台'),
-          session.set ? h('button', { key: 'x', type: 'button', className: 'ql-btn is-quiet', disabled: busy, onClick: forget }, '清除凭据') : null,
+        h('section', { key: 'display', className: 'ql-settings-card', 'aria-label': '输入框胶囊' }, [
+          h('h3', { key: 'title', className: 'ql-settings-title' }, '输入框胶囊'),
+          h('div', { key: 'preview', className: 'ql-preview' }, [
+            h('span', { key: 'label', className: 'ql-settings-caption' }, '实时预览'),
+            hidden ? h('span', { key: 'hidden', className: 'ql-settings-caption' }, '胶囊已隐藏')
+              : h('span', { key: 'pill', className: 'ql-preview-value', role: 'img', 'aria-label': pillAria(snapshot, mode) }, [
+                h(Indicator, { key: 'indicator', mode: indicator, percent: previewPct, tone: toneClass(previewPct) }),
+                previewText ? h('span', { key: mode, className: 'ql-label' }, previewText) : null,
+              ]),
+          ]),
+          h(DisplayChoice, {
+            key: 'mode', label: '胶囊文字', options: PILL_MODES, value: mode,
+            describe: (option) => pillModeLabel(option, windows), onChange: (option) => prefs.set({ mode: option }),
+          }),
+          h(DisplayChoice, {
+            key: 'indicator', label: '状态指示', options: INDICATOR_MODES, value: indicator,
+            describe: (option) => INDICATOR_LABEL[option], onChange: (option) => prefs.set({ indicator: option }),
+          }),
         ]),
 
-        message ? h('p', {
-          key: 'msg',
-          className: message.kind === 'ok' ? 'ql-note is-good' : 'ql-err',
-          'aria-live': 'polite',
-        }, message.text) : null,
+        h(RecentCalls, { key: 'history', rows: recent, emptyMessage: historyEmpty, issue: reading?.usageError }),
+
+        h('section', { key: 'connection', className: 'ql-settings-card', 'aria-label': '账号连接' }, [
+          h('div', { key: 'head', className: 'ql-settings-head' }, [
+            h('h3', { key: 'title', className: 'ql-settings-title' }, '账号连接'),
+            h('span', { key: 'state', className: session?.set ? 'ql-connection-state is-on' : 'ql-connection-state' },
+              session?.set ? '浏览器会话已保存' : session ? '浏览器会话未保存' : '正在检测会话'),
+          ]),
+          h('div', { key: 'actions', className: 'ql-connection-actions' }, [
+            h('button', {
+              key: 'login', type: 'button', className: 'ql-btn is-primary',
+              disabled: credentialBusy || loginUnavailable, onClick: signIn,
+            }, running ? '登录中…' : session?.set ? '重新登录 OpenDesign' : '登录 OpenDesign'),
+            running ? h('button', {
+              key: 'cancel', type: 'button', className: 'ql-btn', disabled: busy, onClick: cancel,
+            }, '取消登录') : null,
+          ]),
+          h('div', { key: 'feedback', className: 'ql-settings-feedback', role: 'status' }, [
+            loginUnavailable ? h('p', { key: 'availability', className: 'ql-settings-note' }, availability.reason) : null,
+            loginFeedback && loginFeedback !== availability?.reason ? h('p', {
+              key: 'message',
+              className: loginTone === 'bad' ? 'ql-settings-issue'
+                : loginTone === 'ok' ? 'ql-settings-caption ql-settings-good' : 'ql-settings-caption',
+            }, loginFeedback) : null,
+          ]),
+          h('details', { key: 'manual', className: 'ql-settings-details' }, [
+            h('summary', { key: 'label' }, '手动粘贴 Cookie'),
+            h('form', { key: 'form', className: 'ql-settings-details-body', onSubmit: bind }, [
+              h('p', { key: 'hint', id: cookieHintId, className: 'ql-settings-note' }, '从浏览器复制完整的 Cookie 请求头，保存前会先验证。'),
+              h('div', { key: 'fields', className: 'ql-cookie-fields' }, [
+                h('input', {
+                  key: 'cookie', className: 'ql-input', type: 'password', name: 'opendesign-cookie',
+                  value: draft, placeholder: '粘贴 Cookie…', autoComplete: 'off', spellCheck: false,
+                  'aria-label': 'OpenDesign Cookie', 'aria-describedby': cookieHintId,
+                  onChange: (event) => setDraft(event.target.value),
+                }),
+                h('button', {
+                  key: 'save', type: 'submit', className: 'ql-btn', disabled: credentialBusy || draft.trim() === '',
+                }, '验证并保存'),
+              ]),
+            ]),
+          ]),
+          h('details', { key: 'source', className: 'ql-settings-details' }, [
+            h('summary', { key: 'label' }, '查看数据来源'),
+            h('div', { key: 'body', className: 'ql-settings-details-body' }, [
+              snapshot?.sourceLine ? h('p', { key: 'source-line', className: 'ql-settings-caption' }, snapshot.sourceLine) : null,
+              h('p', { key: 'cookie', className: 'ql-settings-note' },
+                `浏览器会话${session?.set ? `已保存（尾号 ${session.tail}）` : session ? '未保存' : '正在检测'}，可读取套餐额度。`),
+              h('p', { key: 'key', className: 'ql-settings-note' },
+                `controlKey${controlKey?.set ? ` 已找到（尾号 ${controlKey.tail}）` : controlKey ? ` 未找到${controlKey.reason ? ` · ${controlKey.reason}` : ''}` : ' 正在检测'}，仅用于读取钱包。`),
+            ]),
+          ]),
+          h('div', { key: 'links', className: 'ql-connection-links' }, [
+            h('a', { key: 'dashboard', className: 'ql-link', href: DASHBOARD, target: '_blank', rel: 'noreferrer' }, '打开控制台 ↗'),
+            session?.set ? h('button', {
+              key: 'logout', type: 'button', className: 'ql-btn is-quiet', disabled: credentialBusy, onClick: forget,
+            }, '清除浏览器会话') : null,
+          ]),
+        ]),
       ])
     }
 

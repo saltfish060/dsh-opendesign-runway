@@ -367,7 +367,7 @@ async function readCookie(cookie, timeoutMs, knownWorkspaceId = null) {
         windows: plan.windows,
         tier: plan.tier,
         creditsPerUsd: null,
-        periodEnd: null,
+        billing: parseSummaryBilling(usage.body) ?? parseSummaryBilling(usage.body?.codingPlan),
         endpoint: 'coding-plan-usage',
       },
     }
@@ -389,7 +389,7 @@ async function readCookie(cookie, timeoutMs, knownWorkspaceId = null) {
       windows: plan.windows,
       tier: plan.tier,
       creditsPerUsd: null,
-      periodEnd: null,
+      billing: parseSummaryBilling(preflight.body) ?? parseSummaryBilling(preflight.body?.codingPlan),
       endpoint: 'preflight',
     },
   }
@@ -423,6 +423,7 @@ export function parseUsageRecord(entry) {
   const cacheRead = num(entry.cacheReadTokens) ?? 0
   return {
     at,
+    initiator: typeof entry.initiator === 'string' ? entry.initiator.trim() || null : null,
     model: typeof entry.model === 'string' && entry.model !== ''
       ? entry.model
       : (typeof entry.runtime === 'string' && entry.runtime !== '' ? entry.runtime : '未知模型'),
@@ -461,12 +462,18 @@ export function cacheSavedFor(entry, cacheRead) {
   return Number.isFinite(saved) && saved >= 0 ? saved : null
 }
 
+const RECENT_CALLS_LIMIT = 20
+
+function recentCalls(records) {
+  return records.slice(0, RECENT_CALLS_LIMIT).map(({ model, at, initiator }) => ({ model, at, initiator }))
+}
+
 /**
  * Fold a list of parsed records into the panel's usage block.
  * @param {object[]} records newest-first, as the endpoint returns them
  * @returns {{ today: { requests, list, wallet, plan, input, output, cacheRead },
  *   byModel: { model, requests, list, listPerRequest, input, output }[],
- *   recent: { model: string, at: string }[],
+ *   recent: { model: string, at: string, initiator: string | null }[],
  *   first: string, last: string } | null}
  */
 export function summarizeUsage(records) {
@@ -503,9 +510,7 @@ export function summarizeUsage(records) {
   return {
     today: { ...today, cacheSavedComplete: pricedRecords === list.length },
     byModel: rows,
-    // The two most recent calls, in the order they happened. The panel names the
-    // model and the moment; nothing else about a single call is worth a row.
-    recent: list.slice(0, 2).map((record) => ({ model: record.model, at: record.at })),
+    recent: recentCalls(list),
     // Records arrive newest-first, so the first is the most recent event.
     first: list[0].at,
     last: list[list.length - 1].at,
@@ -515,12 +520,8 @@ export function summarizeUsage(records) {
 /**
  * Read one day of billing usage through the browser-session channel.
  *
- * Two pages is the ceiling, on purpose. The panel only shows today's token burn
- * and the two most recent calls; paging through hundreds of records to sharpen a
- * figure nobody scrolls to would cost latency and invite the vendor's rate
- * limiter. A single page of 100 covers a normal day outright, and the second page
- * catches a busy one. When the cap is hit the total is a floor — that fact is
- * kept in the reading for diagnosis, never printed at the reader.
+ * The recent list may cross midnight, while usage totals only include the
+ * requested day. Both views share the same capped upstream requests.
  * @param {object} input
  * @param {string} input.cookie
  * @param {string} input.workspaceId
@@ -529,7 +530,7 @@ export function summarizeUsage(records) {
  * @param {number} [input.maxPages]
  * @returns {Promise<{ usage: object | null, failure: object | null, trail: object[] }>}
  */
-export async function readUsageRecords(input) {
+export async function readUsageRecords(input, request = call) {
   const trail = []
   const day = typeof input.day === 'string' && input.day !== '' ? input.day : new Date().toISOString().slice(0, 10)
   const maxPages = Number.isFinite(input.maxPages) ? input.maxPages : 2
@@ -537,6 +538,8 @@ export async function readUsageRecords(input) {
   const base = `${API}/api/v1/workspaces/${encodeURIComponent(input.workspaceId)}/billing/usage`
 
   const records = []
+  const latest = []
+  let reachedEarlierDay = false
   let cursor = null
   let pages = 0
   let truncated = false
@@ -544,7 +547,7 @@ export async function readUsageRecords(input) {
 
   while (pages < maxPages) {
     const query = `?limit=100${cursor === null ? '' : `&cursor=${encodeURIComponent(cursor)}`}`
-    const page = await call({ url: `${base}${query}`, headers, timeoutMs: input.timeoutMs })
+    const page = await request({ url: `${base}${query}`, headers, timeoutMs: input.timeoutMs })
     pages += 1
     trail.push(trailEntry({ channel: 'cookie', url: `${base}?limit=100`, result: page, note: page.ok ? `usage p${pages}` : page.kind }))
     if (!page.ok) {
@@ -553,35 +556,32 @@ export async function readUsageRecords(input) {
     }
 
     const entries = Array.isArray(page.body?.entries) ? page.body.entries : []
-    let reachedEarlierDay = false
     for (const entry of entries) {
       const record = parseUsageRecord(entry)
       if (record === null) continue
-      if (record.at.slice(0, 10) !== day) {
-        // Records are newest-first, so the first older row ends the window.
-        reachedEarlierDay = true
-        continue
-      }
-      records.push(record)
+      if (latest.length < RECENT_CALLS_LIMIT) latest.push(record)
+      const recordDay = record.at.slice(0, 10)
+      if (recordDay === day) records.push(record)
+      if (recordDay < day) reachedEarlierDay = true
     }
-    if (reachedEarlierDay) break
+    if (reachedEarlierDay && latest.length >= RECENT_CALLS_LIMIT) break
     if (page.body?.hasMore !== true || typeof page.body?.nextCursor !== 'string') break
     if (pages >= maxPages) {
-      truncated = true
+      truncated = !reachedEarlierDay
       break
     }
     cursor = page.body.nextCursor
   }
 
   const summary = summarizeUsage(records)
-  if (summary === null) {
-    return {
-      usage: failure === null ? { day, truncated, records: 0, recent: [] } : null,
-      failure,
-      trail,
-    }
+  const usage = failure !== null && latest.length === 0 ? null : {
+    day,
+    truncated,
+    records: records.length,
+    ...summary,
+    recent: recentCalls(latest),
   }
-  return { usage: { day, truncated, records: records.length, ...summary }, failure: null, trail }
+  return { usage, failure, trail }
 }
 
 /**
@@ -691,21 +691,31 @@ export async function read(deps) {
   // returns zero rows, which would look like "no usage today".
   let usage = chosen.usage ?? null
   let usageError = null
-  if (cookie !== '') {
-    const workspaceId = cookieOutcome?.workspaceId ?? deps?.workspaceId ?? null
-    if (workspaceId !== null) {
-      // Two pages: enough for a normal day, and the rate limiter stays quiet.
-      const usageRead = await readUsageRecords({ cookie, workspaceId, timeoutMs, maxPages: 2 })
-      trail.push(...usageRead.trail)
-      if (usageRead.usage !== null) usage = usageRead.usage
-      if (usageRead.failure !== null) {
-        usageError = usageRead.failure.kind === 'rate-limited'
-          ? '用量记录读得太频繁，OpenDesign 限流了。稍后再刷新。'
-          : usageRead.failure.kind === 'unauthorized'
-            ? '浏览器会话无权读取用量记录，可能已过期。'
-            : `用量记录读取失败（HTTP ${usageRead.failure.status ?? '—'}）。`
-      }
+  let billing = chosen.billing ?? null
+  const cookieWorkspace = cookieOutcome?.workspaceId ?? deps?.workspaceId ?? null
+  const summaryUrl = `${API}/api/v1/billing/summary`
+  const [usageRead, cookieSummary] = await Promise.all([
+    cookie !== '' && cookieWorkspace !== null
+      ? readUsageRecords({ cookie, workspaceId: cookieWorkspace, timeoutMs, maxPages: 2 })
+      : null,
+    chosen.channel === 'cookie' && billing?.periodEnd == null
+      ? call({ url: summaryUrl, headers: consoleHeaders(cookie), timeoutMs })
+      : null,
+  ])
+  if (usageRead !== null) {
+    trail.push(...usageRead.trail)
+    if (usageRead.usage !== null) usage = usageRead.usage
+    if (usageRead.failure !== null) {
+      usageError = usageRead.failure.kind === 'rate-limited'
+        ? '用量记录读得太频繁，OpenDesign 限流了。稍后再刷新。'
+        : usageRead.failure.kind === 'unauthorized'
+          ? '浏览器会话无权读取用量记录，可能已过期。'
+          : `用量记录读取失败（HTTP ${usageRead.failure.status ?? '—'}）。`
     }
+  }
+  if (cookieSummary !== null) {
+    trail.push(trailEntry({ channel: 'cookie', url: summaryUrl, result: cookieSummary }))
+    if (cookieSummary.ok) billing = parseSummaryBilling(cookieSummary.body) ?? billing
   }
 
   return {
@@ -725,10 +735,10 @@ export async function read(deps) {
       : null,
     windows: chosen.windows,
     usage,
-    billing: chosen.billing ?? null,
+    billing,
     tier: chosen.tier ?? null,
     creditsPerUsd: chosen.creditsPerUsd ?? null,
-    periodEnd: chosen.periodEnd ?? null,
+    periodEnd: billing?.periodEnd ?? chosen.periodEnd ?? null,
     channel: chosen.channel,
     endpoint: chosen.endpoint,
     workspaceId: controlOutcome?.workspace?.id ?? cookieOutcome?.workspaceId ?? deps?.workspaceId ?? null,

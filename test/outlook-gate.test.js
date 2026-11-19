@@ -1,55 +1,65 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { runInNewContext } from 'node:vm'
 
-import { windowOutlook } from '../adapters/opendesign.js'
+const CLIENT = readFileSync(new URL('../client.js', import.meta.url), 'utf8')
+const NOW = Date.parse('2026-11-18T03:00:00Z')
+const iso = (value) => new Date(value).toISOString()
 
-/**
- * Which windows earn a forecast.
- *
- * The panel only prints a rate outlook for cycles of a day or longer. A 5-hour
- * window resets before a meaningful trend forms, so a prediction there would read
- * as more certain than the data supports — and it made the panel taller for no
- * benefit.
- *
- * `windowOutlook` itself stays general (it answers for any window); the decision
- * to withhold the line for short cycles lives in the panel. These tests pin the
- * boundary the panel checks.
- */
-
-const DAY = 86_400
-const HOUR = 3_600
-
-function windowOf(durationSeconds) {
-  const start = Date.parse('2026-11-18T02:53:11.000Z')
-  return {
-    durationSeconds,
-    windowStart: new Date(start).toISOString(),
-    resetAt: new Date(start + durationSeconds * 1000).toISOString(),
-    credits: { used: '1507', limit: '50000', remaining: '48493' },
+function renderForecast({ durationSeconds = 18_000, elapsedMinutes, used, remaining }) {
+  const elapsed = elapsedMinutes * 60_000
+  const entry = {
+    key: 'quota', label: '测试窗口', durationSeconds, remainingPct: 50,
+    windowStart: iso(NOW - elapsed), resetAt: iso(NOW - elapsed + durationSeconds * 1000),
+    credits: { used, remaining, limit: 50000 },
   }
+  const snapshot = { reading: { status: 'ok', queriedAt: NOW, windows: [entry] } }
+  const React = {
+    createElement: (type, props, children) => ({ type, props, children }),
+    useState: (value) => [value === null ? snapshot : value, () => {}],
+    useId: () => 'test-id',
+    useRef: (current) => ({ current }),
+    useCallback: (fn) => fn,
+    useEffect() {},
+    useSyncExternalStore: (_subscribe, read) => read(),
+  }
+  let settings
+  class FixedDate extends Date { static now() { return NOW } }
+  runInNewContext(CLIENT, {
+    Date: FixedDate,
+    window: { __ModuleLoader__: { load({ factory }) {
+      factory(() => React).apply({
+        effect(callback, description) { if (description.endsWith(': settings section')) callback() },
+        inject() {},
+        slots: {
+          inject(_name, callback) { callback() },
+          register(_slot, component) { settings = component },
+        },
+      })
+    } } },
+  })
+  const overview = settings().children[0]
+  const windows = overview.children.flat().find((child) => child?.props?.className === 'ql-settings-windows')
+  const row = windows.children[0]
+  const outlook = row.type(row.props).children.find((child) => child?.props?.className?.startsWith('ql-outlook'))
+  return outlook?.children ?? null
 }
 
-test('a window shorter than a day is below the forecast threshold', () => {
-  assert.equal(windowOf(5 * HOUR).durationSeconds < DAY, true)
-  assert.equal(windowOf(12 * HOUR).durationSeconds < DAY, true)
+test('short quota forecasts use minutes when the pool is burning quickly', () => {
+  assert.equal(renderForecast({ elapsedMinutes: 60, used: 40000, remaining: 10000 }), '照此速度，约 15 分钟后耗尽')
 })
 
-test('a window of exactly one day or longer qualifies', () => {
-  assert.equal(windowOf(DAY).durationSeconds < DAY, false)
-  assert.equal(windowOf(7 * DAY).durationSeconds < DAY, false)
+test('the first five minutes of a short quota window suppress extrapolation', () => {
+  assert.equal(renderForecast({ elapsedMinutes: 3, used: 40000, remaining: 10000 }), '窗口刚开始，积累几分钟后再估算')
+  assert.match(renderForecast({ elapsedMinutes: 5, used: 40000, remaining: 10000 }), /后耗尽/)
 })
 
-test('the outlook function still answers for a short window, so the gate is the panel\'s', () => {
-  // One minute into a 5-hour window: 1507 credits in 1/60 h is ~90k/h against
-  // 48493 left, so the honest answer is that it runs out long before the reset.
-  const now = Date.parse('2026-11-18T02:54:11.000Z')
-  const outlook = windowOutlook(windowOf(5 * HOUR), { now })
-  assert.notEqual(outlook, null)
-  assert.equal(outlook.verdict, 'exhausts')
+test('the long quota window still forecasts survival', () => {
+  assert.equal(renderForecast({ durationSeconds: 604_800, elapsedMinutes: 2000, used: 100, remaining: 49900 }), '照此速度能撑到重置')
 })
 
-test('a missing duration is treated as not qualifying', () => {
-  const entry = { durationSeconds: null, resetAt: '2026-11-20T00:00:00Z', credits: { used: '1', remaining: '9' } }
-  const seconds = Number(entry.durationSeconds)
-  assert.equal(Number.isFinite(seconds) && seconds >= DAY, false)
+test('missing counts are ignored and an empty quota is reported immediately', () => {
+  assert.equal(renderForecast({ elapsedMinutes: 1, used: null, remaining: 30000 }), null)
+  assert.equal(renderForecast({ elapsedMinutes: 1, used: 50000, remaining: 0 }), '当前额度已耗尽')
 })

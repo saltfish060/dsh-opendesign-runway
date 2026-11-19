@@ -42,6 +42,7 @@ export const PATHS = Object.freeze({
 
 /** Default refresh floor, in seconds. */
 const DEFAULT_MIN_INTERVAL_SEC = 60
+const REFRESH_INTERVALS_SEC = [60, 120, 300, 600]
 /** Default failure cooldown, in seconds. */
 const DEFAULT_COOLDOWN_SEC = 300
 
@@ -79,13 +80,21 @@ export function apply(ctx) {
     })
   }
 
+  let credentialRevision = 0
+  function credentialsChanged() {
+    credentialRevision += 1
+    store.invalidate(PROVIDER)
+  }
+
   /**
    * Refresh, subject to the store's policy.
-   * @param {{ force?: boolean }} [options]
+   * @param {{ force?: boolean, intervalSec?: number }} [options]
    */
   const refresh = async (options = {}) => {
     if (options.force === true) store.clearCooldown(PROVIDER)
-    if (options.force !== true && !store.mayAutoRefresh(PROVIDER)) return store.get(PROVIDER)
+    const intervalMs = (options.intervalSec ?? DEFAULT_MIN_INTERVAL_SEC) * 1000
+    if (options.force !== true && !store.mayAutoRefresh(PROVIDER, intervalMs)) return store.get(PROVIDER)
+    const revision = credentialRevision
     return store.coalesce(PROVIDER, async () => {
       let reading
       try {
@@ -103,6 +112,7 @@ export function apply(ctx) {
           queriedAt: Date.now(),
         }
       }
+      if (revision !== credentialRevision) return store.get(PROVIDER)
       if (reading.status === 'ok') store.recordSuccess(PROVIDER, reading)
       else store.recordFailure(PROVIDER, reading)
       return store.get(PROVIDER)
@@ -157,7 +167,12 @@ export function apply(ctx) {
     },
     async execute(args) {
       const reading = await refresh({ force: args?.refresh === true })
-      return JSON.stringify(reading, null, 2)
+      const usage = reading.usage
+      const output = Array.isArray(usage?.recent) ? {
+        ...reading,
+        usage: { ...usage, recent: usage.recent.map(({ model, at }) => ({ model, at })) },
+      } : reading
+      return JSON.stringify(output, null, 2)
     },
   }
   ctx.effect(() => tools.register(quotaTool), 'opendesign-runway: quota_lens')
@@ -168,7 +183,7 @@ export function apply(ctx) {
     verify: defaultVerifier(),
     onSuccess: async ({ cookie }) => {
       await writeRecord(credentials, KEYS['opendesign-session'], { cookie, savedAt: Date.now() })
-      store.clearCooldown(PROVIDER)
+      credentialsChanged()
     },
   })
   ctx.effect(() => () => { void loginFlow.dispose() }, 'opendesign-runway: sign-in teardown')
@@ -189,7 +204,9 @@ export function apply(ctx) {
     mount(PATHS.snapshot, ['GET'], async (request) => {
       const url = new URL(request.url)
       const force = url.searchParams.get('refresh') === '1'
-      return json({ ...(await snapshotOf({ force })), availability: loginAvailability({ remote: isRemoteAuthority(request) }) })
+      const requested = Number(url.searchParams.get('interval'))
+      const intervalSec = REFRESH_INTERVALS_SEC.includes(requested) ? requested : DEFAULT_MIN_INTERVAL_SEC
+      return json({ ...(await snapshotOf({ force, intervalSec })), availability: loginAvailability({ remote: isRemoteAuthority(request) }) })
     }, 'snapshot route')
 
     mount(PATHS.login, ['POST'], async (request) => {
@@ -212,13 +229,13 @@ export function apply(ctx) {
       const probe = await readOpenDesign({ source: 'cookie', cookie, controlKey: null })
       if (probe.status !== 'ok') return json({ ok: false, message: probe.message ?? 'Cookie 未被接受。' }, 400)
       await writeRecord(credentials, KEYS['opendesign-session'], { cookie, savedAt: Date.now() })
-      store.clearCooldown(PROVIDER)
+      credentialsChanged()
       return json({ ok: true, windows: probe.windows.length, balance: probe.money?.amount ?? null })
     }, 'credential route')
 
     mount(PATHS.logout, ['POST'], async () => {
       await clearRecord(credentials, KEYS['opendesign-session'])
-      store.clearCooldown(PROVIDER)
+      credentialsChanged()
       return json({ ok: true })
     }, 'logout route')
   })
