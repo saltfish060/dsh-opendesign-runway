@@ -152,21 +152,15 @@ window.__ModuleLoader__.load({
 .ql-sub.is-truncate{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* ── wallet ───────────────────────────────────────────────────────────── */
-/* Supporting detail, not the headline: one quiet row. The plan windows above it
-   answer the question this panel exists for, and a large balance at 26px used to
-   push them down the page. */
-.ql-hero{
-  display:flex;align-items:baseline;gap:8px;padding:9px 12px;border-radius:10px;
-  border:.5px solid var(--dsw-alias-border-l2);
-  background:color-mix(in srgb, var(--dsw-alias-bg-layer-3) 92%, var(--dsw-alias-label-primary) 8%);
-  min-width:0;flex-wrap:wrap;
-}
-.ql-hero-label{color:var(--dsw-alias-label-tertiary);font-size:12px;letter-spacing:.01em;flex:none}
-.ql-hero-value{font-size:14px;font-weight:600;line-height:1.2;letter-spacing:-.01em;
-  font-variant-numeric:tabular-nums;flex:none}
-.ql-badge{display:inline-flex;align-items:center;gap:4px;
-  padding:1px 7px;border-radius:999px;font-size:11px;letter-spacing:.01em;
-  border:.5px solid var(--dsw-alias-border-l3);color:var(--dsw-alias-label-secondary)}
+/* One line in the same column as the windows, at the same type size. No card:
+   the plan figures are what this panel exists for, and a framed block around a
+   single amount spent more room than it carried. */
+.ql-wallet{display:flex;align-items:baseline;justify-content:space-between;
+  gap:12px;min-width:0}
+.ql-wallet-k{color:var(--dsw-alias-label-secondary);font-size:12px;line-height:1;
+  white-space:nowrap}
+.ql-wallet-v{font-size:12px;font-weight:600;line-height:1;letter-spacing:-.005em;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
 
 /* ── rows ─────────────────────────────────────────────────────────────── */
 .ql-row{display:flex;align-items:baseline;justify-content:space-between;gap:12px;min-height:23px;min-width:0}
@@ -222,11 +216,6 @@ window.__ModuleLoader__.load({
 
 .ql-calls{display:flex;flex-direction:column;gap:2px}
 .ql-calls-cap{color:var(--dsw-alias-label-tertiary);font-size:12px;letter-spacing:.01em}
-
-/* Granted credit expires; say so before it does. Inline with the balance, since
-   the wallet row is one line now. */
-.ql-expiry{font-size:11px;line-height:1.4;flex-basis:100%;
-  color:var(--dsw-alias-state-warn-label)}
 
 /* The two most recent calls: a quiet list, each row one line. */
 .ql-recent{display:flex;flex-direction:column;gap:1px}
@@ -781,31 +770,6 @@ window.__ModuleLoader__.load({
       return h(Ring, { percent, tone })
     }
 
-    /**
-     * How long a wallet balance has left before it expires, in whole days.
-     *
-     * Granted credit carries an expiry date; past it the money is simply gone.
-     * A date is easy to miss, so the panel only speaks up when it is close.
-     * @param {string | null} iso
-     * @returns {{ days: number, text: string } | null} null when the date is
-     *   missing, unparsable, past, or further away than the reminder window
-     */
-    function expiryNotice(iso) {
-      if (typeof iso !== 'string' || iso === '') return null
-      const at = Date.parse(iso)
-      if (!Number.isFinite(at)) return null
-      const hours = (at - Date.now()) / 3_600_000
-      if (!Number.isFinite(hours) || hours <= 0) return null
-      // Three days: long enough to act on, short enough not to be permanent noise.
-      if (hours > 72) return null
-      if (hours < 1) {
-        const minutes = Math.max(1, Math.round(hours * 60))
-        return { days: 0, text: `${minutes} 分钟后过期` }
-      }
-      const days = Math.ceil(hours / 24)
-      return { days, text: days <= 1 ? '不到 1 天后过期' : `${days} 天后过期` }
-    }
-
     /** One labelled row. */
     function Row({ label, value, strong }) {
       return h('div', { className: 'ql-row' }, [
@@ -1033,7 +997,6 @@ window.__ModuleLoader__.load({
       const usage = reading?.usage ?? null
       const billing = reading?.billing ?? null
       const amount = reading?.money?.amount
-      const expiry = expiryNotice(reading?.money?.expiresAt ?? null)
       const text = pillText(snapshot, mode)
       // The ring mirrors the text: it shows the cycle the pill names, so a
       // "仅 7d" pill never draws a 5-hour arc.
@@ -1088,20 +1051,12 @@ window.__ModuleLoader__.load({
             : h('span', { key: 'nowins', className: 'ql-sub' },
               reading?.message ?? '这个账号当前没有套餐窗口。'),
 
-          // The wallet sits under the windows, not above them: the plan windows are
-          // what a subscriber watches, and a large balance pushed them off the top.
-          typeof amount === 'number' ? h('div', { key: 'hero', className: 'ql-hero' }, [
-            h('span', { key: 'l', className: 'ql-hero-label' }, '钱包余额'),
-            h('span', { key: 'v', className: 'ql-hero-value' }, money(amount, reading.money.currency ?? 'USD')),
-            windows.length === 0
-              ? h('span', { key: 'b', className: 'ql-badge' }, '无套餐窗口')
-              : reading?.channel === 'cookie'
-                // The plan pays first; this is what pays after the windows run dry.
-                ? h('span', { key: 'b', className: 'ql-badge' }, '套餐用完转扣这里')
-                : null,
-            expiry === null
-              ? null
-              : h('span', { key: 'exp', className: 'ql-expiry' }, `赠送额度 ${expiry.text}`),
+          // The wallet is one more line in the same column as the windows, at the
+          // same size: it is supporting detail, and a card of its own took more
+          // room than the plan figures the panel exists for.
+          typeof amount === 'number' ? h('div', { key: 'hero', className: 'ql-wallet' }, [
+            h('span', { key: 'k', className: 'ql-wallet-k' }, '钱包余额'),
+            h('span', { key: 'v', className: 'ql-wallet-v' }, money(amount, reading.money.currency ?? 'USD')),
           ]) : null,
 
           reading?.tier ? h(Row, { key: 'tier', label: '套餐', value: String(reading.tier).toUpperCase() }) : null,
