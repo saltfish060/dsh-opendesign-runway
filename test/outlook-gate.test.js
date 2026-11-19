@@ -21,6 +21,9 @@ function renderForecast({ durationSeconds = 18_000, elapsedMinutes, used, remain
     useId: () => 'test-id',
     useRef: (current) => ({ current }),
     useCallback: (fn) => fn,
+    // The settings section reads the last-good snapshot out of localStorage on
+    // its first render; in this harness it starts from the fixture instead.
+    useMemo: (factory) => factory(),
     useEffect() {},
     useSyncExternalStore: (_subscribe, read) => read(),
   }

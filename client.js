@@ -1232,7 +1232,11 @@ window.__ModuleLoader__.load({
     function SettingsSection() {
       const { mode, indicator, refreshSeconds } = usePrefs()
       const cookieHintId = React.useId()
-      const [snapshot, setSnapshot] = React.useState(null)
+      // The last reading this browser saw, shown before the first fetch returns.
+      // A settings page that opens empty for a second reads as broken, and the
+      // numbers it is about to show are the ones from the last poll anyway.
+      const cached = React.useMemo(readCachedSnapshot, [])
+      const [snapshot, setSnapshot] = React.useState(cached === null ? null : cached.body)
       const [refreshError, setRefreshError] = React.useState(null)
       const [refreshing, setRefreshing] = React.useState(false)
       const [draft, setDraft] = React.useState('')
@@ -1254,6 +1258,9 @@ window.__ModuleLoader__.load({
           if (id === requestId.current) {
             setSnapshot(result.body)
             setRefreshError(null)
+            // Cache only a real reading: a failure must not overwrite the last
+            // good numbers the next open would show.
+            if (result.body.reading.status === 'ok') writeCachedSnapshot(result.body)
           }
         } catch (error) {
           if (id === requestId.current) setRefreshError(error instanceof TypeError ? '无法连接 DSH。' : '暂时无法读取额度。')

@@ -1,6 +1,6 @@
 {
   "name": "dsh-opendesign-runway",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "在 DSH 输入框旁显示 OpenDesign 套餐额度和钱包余额：两个额度窗口、重置时间、按当前速率推算会不会在重置前用完，以及最近两次调用的模型和时间。",
   "type": "module",
   "main": "index.js",
