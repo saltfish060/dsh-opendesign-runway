@@ -90,18 +90,22 @@ window.__ModuleLoader__.load({
 .ql-ring-fill{transition:stroke-dashoffset 620ms cubic-bezier(.22,1,.36,1)}
 
 /* The pill's mark for an aged cache: a small dot beside the ring, not a word.
-   The row keeps its width, and the dot reads as a state light rather than a
-   label that competes with the percentage. */
+   It breathes rather than blinking, so it reads as "a read is in progress" and
+   stays calm about it. Motion on opacity only, which the compositor handles. */
 .ql-stale-mark{flex:none;width:5px;height:5px;border-radius:50%;
-  background:var(--dsw-alias-state-warn-label);opacity:.85;
-  animation:ql-stale-in 260ms cubic-bezier(.23,1,.32,1) both}
-@keyframes ql-stale-in{from{opacity:0}to{opacity:.85}}
+  background:var(--dsw-alias-state-warn-label);
+  animation:ql-breathe 1.6s ease-in-out infinite}
+@keyframes ql-breathe{
+  0%,100%{opacity:.35}
+  50%{opacity:.95}
+}
 
 /* The panel has room for the whole sentence, so it says it there. */
 .ql-stale{flex:none;padding:1px 6px;border-radius:999px;font-size:10.5px;
   border:.5px solid var(--dsw-alias-border-l3);
   color:var(--dsw-alias-state-warn-label);
   animation:ql-stale-in 300ms cubic-bezier(.23,1,.32,1) both}
+@keyframes ql-stale-in{from{opacity:0}to{opacity:1}}
 
 /* ── panel ────────────────────────────────────────────────────────────── */
 .ql-panel{
@@ -343,6 +347,8 @@ window.__ModuleLoader__.load({
   .ql-preview-value .ql-label,.ql-preview-value .ql-ring,.ql-preview-value .ql-dot{animation:none}
   .ql-bar-fill,.ql-bar-fill.is-grow,.ql-ring,.ql-ring-fill,.ql-dot,.ql-pill,.ql-btn,
   .ql-option span,.ql-cookie-fields .ql-input{transition:none;animation:none}
+  /* The stale mark keeps a steady, readable opacity instead of breathing. */
+  .ql-stale-mark{animation:none;opacity:.9}
   .ql-pill:active,.ql-btn:active:not(:disabled){transform:none}
 }`
 
