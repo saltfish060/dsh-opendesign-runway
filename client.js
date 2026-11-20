@@ -128,23 +128,28 @@ window.__ModuleLoader__.load({
 @keyframes ql-block-in{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
 
 .ql-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
-.ql-title{font-size:13px;font-weight:600;letter-spacing:-.005em;white-space:nowrap}
+.ql-heading{display:flex;align-items:center;gap:6px;min-width:0}
+.ql-title{font-size:13px;font-weight:600;line-height:16px;letter-spacing:-.005em;white-space:nowrap}
+.ql-heading .ql-stale{flex:0 1 auto;min-width:0;line-height:16px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ql-head .ql-link{flex:none;white-space:nowrap}
 .ql-sub{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:17px;
   overflow-wrap:anywhere}
 .ql-sub.is-truncate{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
-/* ── account rows ─────────────────────────────────────────────────────── */
-/* Plan tier and wallet: two facts about the account, stacked under the gauges.
-   One column of labels, one column of values, a hairline above. No card, no
-   badge — the numbers are small and the gauges are the subject. */
-.ql-meta{display:flex;flex-direction:column;gap:2px;padding-top:9px;
-  border-top:.5px solid var(--dsw-alias-border-l2)}
-
-/* ── rows ─────────────────────────────────────────────────────────────── */
-.ql-row{display:flex;align-items:baseline;justify-content:space-between;gap:12px;min-height:21px;min-width:0}
-.ql-k{color:var(--dsw-alias-label-tertiary);min-width:0;overflow-wrap:anywhere;font-size:12px}
-.ql-v{font-variant-numeric:tabular-nums;white-space:nowrap;flex:none;font-size:12px}
-.ql-v.is-strong{font-weight:600;font-size:13px}
+/* ── account summary ──────────────────────────────────────────────────── */
+.ql-account{display:flex;align-items:center;gap:7px;min-width:0;
+  white-space:nowrap;font-size:11.5px;line-height:16px}
+.ql-panel .ql-account{margin-top:-3px}
+.ql-plan-tier{padding:0 7px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;
+  background:color-mix(in srgb, var(--dsw-alias-label-primary) 6%, transparent);
+  min-width:0;overflow:hidden;text-overflow:ellipsis;font-weight:650;letter-spacing:.02em}
+.ql-plan-period{min-width:0;overflow:hidden;text-overflow:ellipsis;
+  color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}
+.ql-plan-period.is-cancelling{color:var(--dsw-alias-state-warn-label)}
+.ql-account-wallet{display:flex;align-items:center;gap:5px;margin-left:auto;min-width:0}
+.ql-account-wallet-label{color:var(--dsw-alias-label-secondary)}
+.ql-account-wallet-amount{font-variant-numeric:tabular-nums;min-width:0;overflow:hidden;text-overflow:ellipsis}
 
 /* ── windows ──────────────────────────────────────────────────────────── */
 /* Tight: two windows must fit without the panel feeling like a form. */
@@ -160,9 +165,11 @@ window.__ModuleLoader__.load({
 .ql-win-pct{font-variant-numeric:tabular-nums;font-size:12px;font-weight:600;flex:none}
 
 /* Absolute credits and the reset moment share one supporting line. */
-.ql-win-meta{color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:15px;
-  font-variant-numeric:tabular-nums;letter-spacing:.01em;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ql-win-meta{display:flex;align-items:baseline;gap:8px;min-width:0;
+  color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:15px;
+  font-variant-numeric:tabular-nums;letter-spacing:.01em;white-space:nowrap}
+.ql-win-credits{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.ql-win-reset{flex:none;margin-left:auto}
 
 /* The rate outlook: one line, quiet unless it is warning. */
 .ql-outlook{font-size:11px;line-height:15px;color:var(--dsw-alias-label-tertiary);
@@ -189,9 +196,7 @@ window.__ModuleLoader__.load({
 /* ── misc ─────────────────────────────────────────────────────────────── */
 .ql-sep{height:.5px;background:var(--dsw-alias-border-l2);margin:3px 0}
 
-/* The lower half is deliberately compact: one tight column, no stat grid.
-   Type is one step up from before — 11px Chinese text on a translucent surface
-   reads thin, and 12–12.5px still fits two call rows without the block growing. */
+/* Keep the daily total and latest call in one compact column. */
 .ql-tail{display:flex;flex-direction:column;gap:7px}
 
 .ql-tokrow{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
@@ -199,26 +204,17 @@ window.__ModuleLoader__.load({
 .ql-tok-v{font-size:16px;font-weight:650;line-height:1;letter-spacing:-.02em;
   font-variant-numeric:tabular-nums}
 
-.ql-calls{display:flex;flex-direction:column;gap:2px}
-.ql-calls-cap{color:var(--dsw-alias-label-tertiary);font-size:12px;letter-spacing:.01em}
-
-/* The two most recent calls: a quiet list, each row one line. */
-.ql-recent{display:flex;flex-direction:column;gap:1px}
-.ql-call{display:flex;align-items:center;gap:8px;min-width:0;min-height:20px;
-  animation:ql-call-in 260ms cubic-bezier(.23,1,.32,1) both;
-  animation-delay:calc(var(--ql-i,0) * 55ms)}
+.ql-call{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:baseline;
+  gap:7px;min-width:0;padding:4px 7px;border-radius:6px;
+  background:color-mix(in srgb, var(--dsw-alias-label-primary) 5%, transparent);
+  animation:ql-call-in 260ms cubic-bezier(.23,1,.32,1) both}
 @keyframes ql-call-in{from{opacity:0;transform:translateX(-3px)}to{opacity:1;transform:none}}
-/* The bullet rides in the text flow with vertical-align middle, which seats it
-   on the lowercase body — the centre the eye reads. Centring it as a flex sibling
-   instead put it on the line-box centre, which sits low against Latin names. */
-.ql-call-model{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  color:var(--dsw-alias-label-secondary);font-size:12px}
-.ql-call-model::before{content:'';display:inline-block;
-  width:4px;height:4px;border-radius:50%;margin-right:7px;
-  vertical-align:middle;
-  background:var(--dsw-alias-state-business-primary);opacity:.65}
-.ql-call-time{flex:none;color:var(--dsw-alias-label-tertiary);font-size:11.5px;
-  font-variant-numeric:tabular-nums}
+.ql-call-label{color:var(--dsw-alias-label-secondary);font-size:11.5px;white-space:nowrap}
+.ql-call-model{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--dsw-alias-label-primary);font-size:12px;font-weight:550}
+.ql-call-time{color:var(--dsw-alias-label-secondary);font-size:11.5px;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+
 .ql-actions{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .ql-btn{
   display:inline-flex;align-items:center;justify-content:center;height:26px;padding:0 10px;
@@ -288,15 +284,10 @@ window.__ModuleLoader__.load({
 .ql-settings-windows{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
 .ql-settings .ql-win.is-grow{display:flex;gap:6px;padding:10px 12px;min-width:0;
   border:1px solid var(--ql-border);border-radius:9px;background:var(--ql-inset);animation:none}
-.ql-settings .ql-win-name,.ql-settings .ql-win-meta{white-space:normal;overflow-wrap:anywhere}
 .ql-settings .ql-win-pct{font-size:17px}
 .ql-settings .ql-win-meta,.ql-settings .ql-outlook:not(.is-warn){color:var(--ql-muted)}
-.ql-settings-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,80px),1fr));gap:8px 12px;
-  margin:0;padding-top:10px;border-top:1px solid var(--ql-border)}
-.ql-settings-metrics.has-period{grid-template-columns:repeat(auto-fit,minmax(min(100%,112px),1fr))}
-.ql-settings-metric{min-width:0}
-.ql-settings-metric dt{font-size:11.5px;color:var(--ql-muted)}
-.ql-settings-metric dd{margin:1px 0 0;font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.ql-settings .ql-account{padding:6px 8px;border:1px solid var(--ql-border);
+  border-radius:7px;background:var(--ql-inset)}
 
 .ql-preview{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px 12px;
   min-height:44px;padding:5px 10px;box-sizing:border-box;
@@ -383,7 +374,9 @@ window.__ModuleLoader__.load({
       hour: '2-digit',
       minute: '2-digit',
     })
-    const expiryFormat = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'long' })
+    const expiryFormat = new Intl.DateTimeFormat('zh-CN', {
+      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    })
     const historyFormat = new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
     const clockFormat = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' })
 
@@ -569,6 +562,24 @@ window.__ModuleLoader__.load({
     const PILL_MODE_KEY = 'opendesign-runway.pillMode'
     const INDICATOR_KEY = 'opendesign-runway.indicator'
     const REFRESH_SECONDS_KEY = 'opendesign-runway.refreshSeconds'
+    const DETAIL_PREFS_KEY = 'opendesign-runway.detailDisplay'
+    const PLAN_DATE_LABELS = Object.freeze({ days: '剩余天数', date: '到期时间', hidden: '隐藏' })
+    const PLAN_DATE_MODES = Object.freeze(Object.keys(PLAN_DATE_LABELS))
+    const DETAIL_TOGGLES = Object.freeze({
+      tier: '套餐档位', wallet: '钱包余额', credits: 'Credits', reset: '重置倒计时', outlook: '用量预测',
+    })
+
+    function readStoredDetails() {
+      let stored = null
+      try {
+        stored = JSON.parse(window.localStorage.getItem(DETAIL_PREFS_KEY))
+      } catch {}
+      const details = { planDate: PLAN_DATE_MODES.includes(stored?.planDate) ? stored.planDate : 'days' }
+      for (const field of Object.keys(DETAIL_TOGGLES)) {
+        details[field] = typeof stored?.[field] === 'boolean' ? stored[field] : true
+      }
+      return details
+    }
 
     /**
      * Carry a stored mode from an older build forward.
@@ -625,6 +636,7 @@ window.__ModuleLoader__.load({
         mode: readStoredMode(),
         indicator: readStored(INDICATOR_KEY, INDICATOR_MODES, 'ring'),
         refreshSeconds: readStored(REFRESH_SECONDS_KEY, REFRESH_OPTIONS, String(DEFAULT_REFRESH_SECONDS)),
+        details: readStoredDetails(),
       }
       const listeners = new Set()
       return {
@@ -636,10 +648,12 @@ window.__ModuleLoader__.load({
           return state
         },
         set(patch) {
-          state = { ...state, ...patch }
+          const details = patch.details ? { ...state.details, ...patch.details } : state.details
+          state = { ...state, ...patch, details }
           if (Object.hasOwn(patch, 'mode')) writeStored(PILL_MODE_KEY, state.mode)
           if (Object.hasOwn(patch, 'indicator')) writeStored(INDICATOR_KEY, state.indicator)
           if (Object.hasOwn(patch, 'refreshSeconds')) writeStored(REFRESH_SECONDS_KEY, state.refreshSeconds)
+          if (patch.details) writeStored(DETAIL_PREFS_KEY, JSON.stringify(details))
           for (const listener of listeners) listener()
         },
       }
@@ -781,14 +795,6 @@ window.__ModuleLoader__.load({
       return h(Ring, { percent, tone })
     }
 
-    /** One labelled row. */
-    function Row({ label, value, strong }) {
-      return h('div', { className: 'ql-row' }, [
-        h('span', { key: 'k', className: 'ql-k' }, label),
-        h('span', { key: 'v', className: strong ? 'ql-v is-strong' : 'ql-v' }, value),
-      ])
-    }
-
     /** Estimate from the quota window's own anchor and the time its usage was sampled. */
     function outlookLine(entry, sampledAt = Date.now()) {
       const seconds = Number(entry?.durationSeconds)
@@ -821,21 +827,11 @@ window.__ModuleLoader__.load({
       return { text: `照此速度，${eta}后耗尽`, tone: 'warn' }
     }
 
-    /**
-     * One plan window, in three tight rows:
-     *
-     *   Design Plan · 7 天                    75%
-     *   ▓▓▓▓▓▓▓▓▓▓▓▓▓▒░░
-     *   112500 / 150000 · 6 天后重置
-     *   照此速度能撑到重置
-     *
-     * Credits and the reset moment share one line because they are both
-     * supporting detail; giving each its own row doubled the panel's height for
-     * numbers that belong together.
-     */
-    function WindowRow({ entry, index, sampledAt, grow = false }) {
+    /** Duration and percentage above the bar, with the optional details below it. */
+    function WindowRow({ entry, index, sampledAt, details, inSettings = false }) {
+      const label = entry.label?.replace(/^Design Plan\s*·\s*/i, '')
       const pct = typeof entry.remainingPct === 'number' ? entry.remainingPct : null
-      const remainingHours = hoursUntil(entry.resetAt)
+      const remainingHours = details.reset ? hoursUntil(entry.resetAt) : null
       // "3 小时后重置" answers when, but not what the reader actually wants to
       // know: whether waiting is worth it. The clock time goes in the tooltip.
       const resetText = remainingHours === null || remainingHours < 0
@@ -850,22 +846,21 @@ window.__ModuleLoader__.load({
               ? `${Math.round(remainingHours)} 小时后重置`
               : `${Math.round(remainingHours / 24)} 天后重置`
       const credits = entry.credits ?? {}
-      const creditText = credits.remaining !== null && credits.remaining !== undefined
-        ? `${count(credits.remaining)} / ${count(credits.limit)}`
+      const creditText = details.credits && credits.remaining != null
+        ? `Credits ${count(credits.remaining)} / ${count(credits.limit)}`
         : null
-      const meta = [creditText, resetText].filter((part) => part !== null).join(' · ')
-      const outlook = outlookLine(entry, sampledAt)
+      const outlook = details.outlook ? outlookLine(entry, sampledAt) : null
       const resetTitle = remainingHours !== null && remainingHours >= 0
         ? `重置于 ${when(entry.resetAt) ?? ''}`
         : ''
       const ratio = pct === null ? 0 : Math.max(0, Math.min(100, pct)) / 100
 
       return h('div', {
-        className: grow ? 'ql-win is-grow' : 'ql-win',
+        className: inSettings ? 'ql-win is-grow' : 'ql-win',
         style: { '--ql-i': index },
       }, [
         h('div', { key: 'head', className: 'ql-win-head' }, [
-          h('span', { key: 'n', className: 'ql-win-name', title: entry.label }, entry.label),
+          h('span', { key: 'n', className: 'ql-win-name', title: label }, label),
           h('span', { key: 'p', className: 'ql-win-pct' }, pct === null ? '不可读' : `${Math.round(pct)}%`),
         ]),
         pct === null
@@ -874,7 +869,7 @@ window.__ModuleLoader__.load({
             key: 'bar',
             className: 'ql-bar',
             role: 'progressbar',
-            'aria-label': `${entry.label} 剩余`,
+            'aria-label': `${label} 剩余`,
             'aria-valuenow': Math.round(pct),
             'aria-valuemin': 0,
             'aria-valuemax': 100,
@@ -882,14 +877,21 @@ window.__ModuleLoader__.load({
             // On the settings page the bar draws itself on arrival; the panel
             // keeps the plain fill, because a pill opened and closed repeatedly
             // must not replay an entrance.
-            className: grow
+            className: inSettings
               ? `ql-bar-fill is-grow ${toneClass(pct)}`
               : `ql-bar-fill ${toneClass(pct)}`,
-            style: grow
+            style: inSettings
               ? { '--ql-pct': ratio }
               : { transform: `scaleX(${ratio})` },
           })),
-        meta === '' ? null : h('span', { key: 'm', className: 'ql-win-meta', title: resetTitle }, meta),
+        creditText === null && resetText === null ? null : h('div', { key: 'meta', className: 'ql-win-meta' }, [
+          creditText === null ? null : h('span', {
+            key: 'credits', className: 'ql-win-credits', title: creditText,
+          }, creditText),
+          resetText === null ? null : h('span', {
+            key: 'reset', className: 'ql-win-reset', title: resetTitle,
+          }, resetText),
+        ]),
         outlook === null
           ? null
           : h('span', {
@@ -961,15 +963,33 @@ window.__ModuleLoader__.load({
       }
     }
 
-    function planEndOf(reading) {
-      const raw = reading?.billing?.periodEnd ?? reading?.periodEnd
-      const value = Date.parse(raw ?? '')
-      if (!Number.isFinite(value)) return null
-      return {
-        label: reading.billing?.cancelAtPeriodEnd ? '套餐到期日' : '套餐周期结束',
-        date: expiryFormat.format(value),
-        title: when(value),
+    function AccountSummary({ reading, details }) {
+      const tier = details.tier && reading?.tier ? String(reading.tier).toUpperCase() : null
+      const amount = reading?.money?.amount
+      const walletBalance = details.wallet && typeof amount === 'number'
+        ? money(amount, reading.money.currency ?? 'USD') : null
+      const rawEnd = reading?.billing?.periodEnd ?? reading?.periodEnd
+      const end = details.planDate === 'hidden' ? NaN : Date.parse(rawEnd ?? '')
+      const cancelling = reading?.billing?.cancelAtPeriodEnd === true
+      const period = Number.isFinite(end) ? expiryFormat.format(end) : null
+      if (!tier && period === null && walletBalance === null) return null
+
+      let periodText = period
+      if (period !== null && details.planDate === 'days') {
+        const days = Math.max(0, Math.ceil((end - Date.now()) / 86_400_000))
+        periodText = `${days} ${days === 1 ? 'day' : 'days'} left`
       }
+      return h('div', { className: 'ql-account' }, [
+        tier ? h('span', { key: 'tier', className: 'ql-plan-tier', title: `套餐 ${tier}` }, tier) : null,
+        period !== null ? h('time', {
+          key: 'end', className: cancelling ? 'ql-plan-period is-cancelling' : 'ql-plan-period',
+          dateTime: new Date(end).toISOString(), title: `${cancelling ? '套餐到期日' : '套餐周期结束'} ${period}`,
+        }, periodText) : null,
+        walletBalance !== null ? h('span', { key: 'wallet', className: 'ql-account-wallet' }, [
+          h('span', { key: 'label', className: 'ql-account-wallet-label' }, '余额'),
+          h('span', { key: 'amount', className: 'ql-account-wallet-amount', title: walletBalance }, walletBalance),
+        ]) : null,
+      ])
     }
 
     /** The pill and its detail panel. */
@@ -981,7 +1001,7 @@ window.__ModuleLoader__.load({
       const [open, setOpen] = React.useState(false)
       const [busy, setBusy] = React.useState(false)
       const [error, setError] = React.useState(null)
-      const { mode, indicator, refreshSeconds } = usePrefs()
+      const { mode, indicator, refreshSeconds, details } = usePrefs()
       const anchor = React.useRef(null)
 
       const load = React.useCallback(async (refresh) => {
@@ -1035,9 +1055,8 @@ window.__ModuleLoader__.load({
       const reading = snapshot?.reading ?? null
       const windows = Array.isArray(reading?.windows) ? reading.windows : []
       const usage = reading?.usage ?? null
-      const billing = reading?.billing ?? null
-      const planEnd = planEndOf(reading)
-      const amount = reading?.money?.amount
+      const today = usage?.today ?? null
+      const latestCall = Array.isArray(usage?.recent) ? usage.recent[0] : null
       const text = pillText(snapshot, mode)
       const pct = pillPercent(windows, mode)
       // Both controls off means the pill would be an empty box with no text, no
@@ -1069,10 +1088,12 @@ window.__ModuleLoader__.load({
           'aria-label': `${PROVIDER_LABEL} 额度详情`,
         }, [
           h('div', { key: 'head', className: 'ql-head' }, [
-            h('span', { key: 't', className: 'ql-title' }, `${PROVIDER_LABEL} 额度`),
-            stale
-              ? h('span', { key: 'stale', className: 'ql-stale', 'aria-live': 'polite' }, '旧数据 · 正在刷新')
-              : null,
+            h('div', { key: 'heading', className: 'ql-heading' }, [
+              h('span', { key: 't', className: 'ql-title' }, `${PROVIDER_LABEL} 额度`),
+              stale ? h('span', {
+                key: 'stale', className: 'ql-stale', 'aria-live': 'polite', title: '旧数据 · 正在刷新',
+              }, '正在刷新') : null,
+            ]),
             h('a', {
               key: 'a',
               className: 'ql-link',
@@ -1082,67 +1103,31 @@ window.__ModuleLoader__.load({
             }, '控制台'),
           ]),
 
+          h(AccountSummary, { key: 'account', reading, details }),
+
           windows.length > 0
             ? h('div', { key: 'wins', className: 'ql-wins' },
-              windows.map((entry, index) => h(WindowRow, { key: entry.key, entry, index, sampledAt: reading.queriedAt })))
+              windows.map((entry, index) => h(WindowRow, { key: entry.key, entry, index, sampledAt: reading.queriedAt, details })))
             : h('span', { key: 'nowins', className: 'ql-sub' },
               reading?.message ?? '这个账号当前没有套餐窗口。'),
 
-          // Account facts under the windows: the plan, then the money behind it.
-          // Both are single key/value rows so the labels line up in one column,
-          // and a hairline separates them from the window gauges above.
-          reading?.tier != null || typeof amount === 'number'
-            ? h('div', { key: 'meta', className: 'ql-meta' }, [
-              reading?.tier
-                ? h(Row, { key: 'tier', label: '套餐', value: String(reading.tier).toUpperCase() })
-                : null,
-              typeof amount === 'number'
-                ? h(Row, { key: 'wallet', label: '钱包余额', value: money(amount, reading.money.currency ?? 'USD') })
-                : null,
-            ])
-            : null,
-
-          // Delivery note: the usage block is deliberately terse. A truncated
-          // page count is a limitation of the read, not a fact about the account,
-          // so it is never surfaced as a row — the figure simply is what it is.
-          usage !== null && usage.today !== undefined ? h('div', { key: 'tail', className: 'ql-tail' }, [
+          today || latestCall ? h('div', { key: 'tail', className: 'ql-tail' }, [
             h('div', { key: 'sep', className: 'ql-sep' }),
-            h('div', { key: 'tok', className: 'ql-tokrow' }, [
+            today ? h('div', { key: 'tok', className: 'ql-tokrow' }, [
               h('span', { key: 'k', className: 'ql-tok-k' }, '今日 token'),
-              h('span', { key: 'v', className: 'ql-tok-v' }, compactTokens(usage.today.input + usage.today.output)),
-            ]),
-            Array.isArray(usage.recent) && usage.recent.length > 0
-              ? h('div', { key: 'calls', className: 'ql-calls' }, [
-                h('span', { key: 'cap', className: 'ql-calls-cap' }, '最近两次调用'),
-                h('div', { key: 'recent', className: 'ql-recent' },
-                  usage.recent.slice(0, 2).map((row, index) => h('div', {
-                    key: `${row.at}-${index}`,
-                    className: 'ql-call',
-                    style: { '--ql-i': index },
-                  }, [
-                    h('span', { key: 'm', className: 'ql-call-model', title: row.model }, row.model),
-                    h('span', {
-                      key: 't',
-                      className: 'ql-call-time',
-                      title: when(row.at) ?? '',
-                    }, relativeTime(row.at) ?? '—'),
-                  ]))),
-              ])
-              : null,
+              h('span', { key: 'v', className: 'ql-tok-v' }, compactTokens((today.input ?? 0) + (today.output ?? 0))),
+            ]) : null,
+            latestCall ? h('div', { key: 'latest', className: 'ql-call' }, [
+              h('span', { key: 'label', className: 'ql-call-label' }, '上次调用'),
+              h('span', { key: 'model', className: 'ql-call-model', title: latestCall.model }, latestCall.model),
+              h('time', {
+                key: 'time', className: 'ql-call-time', dateTime: latestCall.at,
+                title: when(latestCall.at) ?? undefined,
+              }, relativeTime(latestCall.at) ?? '—'),
+            ]) : null,
           ]) : null,
 
           reading?.usageError ? h('p', { key: 'uerr', className: 'ql-err' }, reading.usageError) : null,
-
-          (planEnd !== null || billing?.status != null)
-            ? h('div', { key: 'billing', className: 'ql-tail' }, [
-              h('div', { key: 'sep', className: 'ql-sep' }),
-              billing?.status != null
-                ? h(Row, { key: 'st', label: '订阅', value: billing.cancelAtPeriodEnd ? `${billing.status} · 到期取消` : billing.status })
-                : null,
-              planEnd !== null
-                ? h(Row, { key: 'end', label: planEnd.label, value: planEnd.date })
-                : null,
-            ]) : null,
 
           error !== null ? h('p', { key: 'err', className: 'ql-err' }, error) : null,
 
@@ -1230,7 +1215,7 @@ window.__ModuleLoader__.load({
     }
 
     function SettingsSection() {
-      const { mode, indicator, refreshSeconds } = usePrefs()
+      const { mode, indicator, refreshSeconds, details } = usePrefs()
       const cookieHintId = React.useId()
       // The last reading this browser saw, shown before the first fetch returns.
       // A settings page that opens empty for a second reads as broken, and the
@@ -1359,18 +1344,10 @@ window.__ModuleLoader__.load({
       const healthy = reading?.status === 'ok'
       const windows = Array.isArray(reading?.windows) ? reading.windows : []
       const today = healthy ? reading.usage?.today : null
-      const wallet = healthy ? reading.money : null
-      const planEnd = healthy ? planEndOf(reading) : null
       const recent = healthy && Array.isArray(reading.usage?.recent) ? reading.usage.recent : []
       const historyEmpty = !reading ? (refreshError ? '暂时无法读取调用记录。' : '正在读取调用记录…')
         : !session?.set ? '连接 OpenDesign 浏览器会话后可查看调用记录。'
         : reading.usageError || !healthy ? '暂时无法读取调用记录。' : '暂无调用记录。'
-      const metrics = [
-        ['套餐', reading?.tier ? String(reading.tier).toUpperCase() : null],
-        ['钱包余额', typeof wallet?.amount === 'number' ? money(wallet.amount, wallet.currency ?? 'USD') : null],
-        ['今日 Token', today ? compactTokens((today.input ?? 0) + (today.output ?? 0)) : null],
-        [planEnd?.label ?? '套餐周期结束', planEnd?.date ?? (windows.length > 0 ? '暂未提供' : null), planEnd?.title],
-      ].filter(([, value]) => value !== null)
       // Cached snapshots keep the original reading's timestamp across polls.
       const readAt = reading?.queriedAt ?? snapshot?.asOf
       const readTime = healthy && Number.isFinite(readAt) ? new Date(readAt) : null
@@ -1397,14 +1374,17 @@ window.__ModuleLoader__.load({
           refreshError ? h('p', { key: 'error', className: 'ql-settings-issue', role: 'status' },
             healthy ? `${refreshError} 当前显示上次读数。` : refreshError) : null,
           healthy ? [
+            h(AccountSummary, { key: 'account', reading, details }),
             windows.length > 0 ? h('div', { key: 'windows', className: 'ql-settings-windows' },
-              windows.map((entry, index) => h(WindowRow, { key: entry.key, entry, index, sampledAt: reading.queriedAt, grow: true })))
+              windows.map((entry, index) => h(WindowRow, {
+                key: entry.key, entry, index, sampledAt: reading.queriedAt, details, inSettings: true,
+              })))
               : h('p', { key: 'no-windows', className: 'ql-settings-note' },
                 reading.channel === 'control' ? '当前来源仅提供钱包余额。' : '当前没有可显示的套餐窗口。'),
-            metrics.length > 0 ? h('dl', { key: 'metrics', className: planEnd ? 'ql-settings-metrics has-period' : 'ql-settings-metrics' },
-              metrics.map(([label, value, title]) => h('div', { key: label, className: 'ql-settings-metric' }, [
-                h('dt', { key: 'label' }, label), h('dd', { key: 'value', title }, value),
-              ]))) : null,
+            today ? h('div', { key: 'tok', className: 'ql-tokrow' }, [
+              h('span', { key: 'label', className: 'ql-tok-k' }, '今日 Token'),
+              h('span', { key: 'value', className: 'ql-tok-v' }, compactTokens((today.input ?? 0) + (today.output ?? 0))),
+            ]) : null,
           ] : (!refreshError ? h('p', { key: 'status', className: 'ql-settings-note', role: 'status' },
             reading ? (reading.message ?? '暂时读不到额度。') : '正在读取额度…') : null),
           h('label', { key: 'interval', className: 'ql-refresh-preference' }, [
@@ -1433,6 +1413,25 @@ window.__ModuleLoader__.load({
             key: 'indicator', label: '状态指示', options: INDICATOR_MODES, value: indicator,
             describe: (option) => INDICATOR_LABEL[option], onChange: (option) => prefs.set({ indicator: option }),
           }),
+        ]),
+
+        h('section', { key: 'details', className: 'ql-settings-card', 'aria-label': '额度明细显示' }, [
+          h('h3', { key: 'title', className: 'ql-settings-title' }, '额度明细显示'),
+          h(DisplayChoice, {
+            key: 'date', label: '套餐日期', options: PLAN_DATE_MODES, value: details.planDate,
+            describe: (option) => PLAN_DATE_LABELS[option], onChange: (planDate) => prefs.set({ details: { planDate } }),
+          }),
+          h('div', { key: 'fields', className: 'ql-setting-choice' }, [
+            h('span', { key: 'label', className: 'ql-setting-choice-title' }, '显示项目'),
+            h('div', { key: 'options', className: 'ql-options', role: 'group', 'aria-label': '显示项目' },
+              Object.entries(DETAIL_TOGGLES).map(([field, label]) => h('label', { key: field, className: 'ql-option' }, [
+                h('input', {
+                  key: 'checkbox', type: 'checkbox', checked: details[field],
+                  onChange: (event) => prefs.set({ details: { [field]: event.target.checked } }),
+                }),
+                h('span', { key: 'label' }, label),
+              ]))),
+          ]),
         ]),
 
         h(RecentCalls, { key: 'history', rows: recent, emptyMessage: historyEmpty, issue: reading?.usageError }),
