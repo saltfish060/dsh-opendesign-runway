@@ -89,12 +89,19 @@ window.__ModuleLoader__.load({
 .ql-ring-track{opacity:.22}
 .ql-ring-fill{transition:stroke-dashoffset 620ms cubic-bezier(.22,1,.36,1)}
 
-/* A stale-but-usable reading: visible, quiet, never mistaken for current. */
+/* The pill's mark for an aged cache: a small dot beside the ring, not a word.
+   The row keeps its width, and the dot reads as a state light rather than a
+   label that competes with the percentage. */
+.ql-stale-mark{flex:none;width:5px;height:5px;border-radius:50%;
+  background:var(--dsw-alias-state-warn-label);opacity:.85;
+  animation:ql-stale-in 260ms cubic-bezier(.23,1,.32,1) both}
+@keyframes ql-stale-in{from{opacity:0}to{opacity:.85}}
+
+/* The panel has room for the whole sentence, so it says it there. */
 .ql-stale{flex:none;padding:1px 6px;border-radius:999px;font-size:10.5px;
   border:.5px solid var(--dsw-alias-border-l3);
   color:var(--dsw-alias-state-warn-label);
   animation:ql-stale-in 300ms cubic-bezier(.23,1,.32,1) both}
-@keyframes ql-stale-in{from{opacity:0}to{opacity:1}}
 
 /* ── panel ────────────────────────────────────────────────────────────── */
 .ql-panel{
@@ -904,13 +911,23 @@ window.__ModuleLoader__.load({
     /**
      * The last snapshot this browser saw, kept across restarts.
      *
-     * A restart is followed by a cold read: credentials, then two upstream calls,
-     * which is a second or two of an empty pill. Showing the previous numbers
-     * immediately — marked as stale — is better than showing nothing, as long as
-     * the age is visible and a real read is already on its way.
+     * A cold open is followed by a read: credentials, then two upstream calls, so
+     * the pill would be empty for a second or two. Showing the previous numbers
+     * meanwhile is better than showing nothing — provided the reader can tell they
+     * are old, which is why the cache carries its own timestamp rather than
+     * trusting the reading inside it.
      */
     const SNAPSHOT_CACHE_KEY = 'opendesign-runway.lastSnapshot'
     const CACHE_MAX_AGE_MS = 30 * 60 * 1000
+    /**
+     * How old a cached reading may be before it is called out.
+     *
+     * Under this the numbers are effectively the same ones the next read is about
+     * to return — the upstream refresh floor is 60 seconds — so a badge on every
+     * open would be noise. Past it, the reader is looking at figures that have
+     * genuinely moved on and deserves to know.
+     */
+    const STALE_AFTER_MS = 3 * 60 * 1000
 
     /** Read the cached snapshot for one provider, or null when unusable. */
     function readCachedSnapshot() {
@@ -997,7 +1014,12 @@ window.__ModuleLoader__.load({
       const provider = useProvider(directoryFor(props.directories, props.sessionId))
       const cached = React.useMemo(readCachedSnapshot, [])
       const [snapshot, setSnapshot] = React.useState(cached === null ? null : cached.body)
-      const [stale, setStale] = React.useState(cached !== null)
+      // Only a cache that has visibly aged is flagged. A fresh cache is what the
+      // next read is about to return anyway, and a badge on every open trains the
+      // reader to ignore it.
+      const [stale, setStale] = React.useState(
+        cached !== null && Date.now() - cached.at > STALE_AFTER_MS,
+      )
       const [open, setOpen] = React.useState(false)
       const [busy, setBusy] = React.useState(false)
       const [error, setError] = React.useState(null)
@@ -1076,9 +1098,12 @@ window.__ModuleLoader__.load({
         }, [
           h(Indicator, { key: 'indicator', mode: indicator, percent: pct, tone: toneClass(pct) }),
           text === '' ? null : h('span', { key: 'text', className: 'ql-label' }, text),
-          // A stale reading keeps its numbers but says so, so a restart never
-          // reads as "these are the current figures".
-          stale ? h('span', { key: 'stale', className: 'ql-stale', title: '正在刷新' }, '旧') : null,
+          // The pill stays as narrow as it was: an aged cache marks the ring
+          // instead of adding a word to the row.
+          stale ? h('span', {
+            key: 'stale', className: 'ql-stale-mark', title: '显示的是上次读数，正在刷新',
+            'aria-label': '上次读数',
+          }) : null,
         ]),
 
         open ? h('div', {
