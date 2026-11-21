@@ -47,13 +47,19 @@
 
 ## 安装
 
-从 npm 安装：
+从 npm 安装（推荐，不需要连 github.com）：
 
 ```
 dsh plugin --profile desktop add dsh-opendesign-runway
 ```
 
-从 GitHub 安装：
+装不上 npm 时，用 GitHub Release 里的预构建包：
+
+```
+dsh plugin --profile desktop add https://github.com/saltfish060/dsh-opendesign-runway/releases/latest/download/dsh-opendesign-runway.tgz
+```
+
+从仓库源码安装也可以，但这条路径要 clone github.com，网络不通时会停在 `Command failed`：
 
 ```
 dsh plugin --profile desktop add github:saltfish060/dsh-opendesign-runway
